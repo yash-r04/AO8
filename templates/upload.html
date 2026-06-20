@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Upload{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="mono page-tag">// step 1 of 3</div>
+  <h1 class="page-title">Upload your model</h1>
+  <p class="page-sub">Supports PyTorch (.pt) and scikit-learn (.pkl) models with tabular CSV datasets.</p>
+</div>
+
+<div class="upload-layout">
+
+  <form class="upload-form" id="uploadForm" enctype="multipart/form-data">
+
+    <!-- Model upload -->
+    <div class="form-section">
+      <div class="form-section-label mono">01 // model file</div>
+      <div class="drop-zone" id="modelDropZone" data-target="modelInput">
+        <div class="drop-icon">⬡</div>
+        <div class="drop-text">Drop model file here</div>
+        <div class="drop-sub mono">or click to browse — .pt / .pkl only</div>
+        <input type="file" id="modelInput" name="model" accept=".pt,.pkl" hidden>
+        <div class="drop-preview" id="modelPreview"></div>
+      </div>
+    </div>
+
+    <!-- Dataset upload -->
+    <div class="form-section">
+      <div class="form-section-label mono">02 // dataset</div>
+      <div class="drop-zone" id="datasetDropZone" data-target="datasetInput">
+        <div class="drop-icon">⬡</div>
+        <div class="drop-text">Drop dataset here</div>
+        <div class="drop-sub mono">or click to browse — .csv only</div>
+        <input type="file" id="datasetInput" name="dataset" accept=".csv" hidden>
+        <div class="drop-preview" id="datasetPreview"></div>
+      </div>
+    </div>
+
+    <!-- Config -->
+    <div class="form-section">
+      <div class="form-section-label mono">03 // model config</div>
+      <div class="config-grid">
+        <div class="field">
+          <label class="field-label mono" for="input_shape">Input shape</label>
+          <input class="field-input" type="text" id="input_shape" name="input_shape" placeholder="e.g. 41">
+          <span class="field-hint mono">number of features in your dataset</span>
+        </div>
+        <div class="field">
+          <label class="field-label mono" for="num_classes">Number of classes</label>
+          <input class="field-input" type="number" id="num_classes" name="num_classes" placeholder="e.g. 2" min="2">
+          <span class="field-hint mono">output classes the model predicts</span>
+        </div>
+        <div class="field">
+          <label class="field-label mono" for="loss">Loss function</label>
+          <select class="field-input" id="loss" name="loss">
+            <option value="CrossEntropyLoss">CrossEntropyLoss</option>
+            <option value="BCELoss">BCELoss</option>
+            <option value="BCEWithLogitsLoss">BCEWithLogitsLoss</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label mono" for="model_type">Model type</label>
+          <select class="field-input" id="model_type" name="model_type">
+            <option value="pytorch">PyTorch (MLP / CNN)</option>
+            <option value="sklearn">scikit-learn (RF / SVM / XGB)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Validation status -->
+    <div class="validation-bar" id="validationBar">
+      <div class="validation-item" id="vModel">
+        <span class="v-dot"></span>
+        <span class="mono">model file</span>
+      </div>
+      <div class="validation-item" id="vDataset">
+        <span class="v-dot"></span>
+        <span class="mono">dataset</span>
+      </div>
+      <div class="validation-item" id="vConfig">
+        <span class="v-dot"></span>
+        <span class="mono">config</span>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary" id="uploadBtn" disabled>
+        Validate and continue →
+      </button>
+      <span class="form-hint mono">model is validated before any attack runs</span>
+    </div>
+
+  </form>
+
+  <!-- Side info -->
+  <aside class="upload-aside">
+    <div class="aside-card">
+      <div class="aside-title mono">supported models</div>
+      <ul class="aside-list">
+        <li class="mono">MLP, CNN — PyTorch .pt</li>
+        <li class="mono">Random Forest — .pkl</li>
+        <li class="mono">SVM — .pkl</li>
+        <li class="mono">XGBoost — .pkl</li>
+      </ul>
+    </div>
+    <div class="aside-card">
+      <div class="aside-title mono">requirements</div>
+      <ul class="aside-list">
+        <li class="mono">White-box access required</li>
+        <li class="mono">Tabular CSV input only</li>
+        <li class="mono">Model size &lt; 200MB</li>
+        <li class="mono">Dataset rows &lt; 50k for C&amp;W</li>
+      </ul>
+    </div>
+    <div class="aside-card aside-warn">
+      <div class="aside-title mono">⚠ note on C&W</div>
+      <p class="mono aside-text">The Carlini &amp; Wagner attack is computationally heavy. It runs as opt-in on the next screen and may take 5–15 minutes depending on dataset size.</p>
+    </div>
+  </aside>
+
+</div>
+
+{% endblock %}

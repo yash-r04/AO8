@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <div class="hero-tag mono">v1.0 // white-box adversarial testing</div>
+  <h1 class="hero-title">
+    Break your model<br>
+    <span class="accent">before attackers do.</span>
+  </h1>
+  <p class="hero-sub">
+    AO8 runs FGSM, PGD, and C&W attacks against your security ML model,
+    applies defenses, and gives you a clear robustness report.
+  </p>
+  <div class="hero-actions">
+    <a href="/upload" class="btn btn-primary">Start benchmarking</a>
+    <a href="#how" class="btn btn-ghost">See how it works</a>
+  </div>
+  <div class="hero-stats">
+    <div class="stat">
+      <span class="stat-num">3</span>
+      <span class="stat-label mono">attack types</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <span class="stat-num">3</span>
+      <span class="stat-label mono">defense methods</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <span class="stat-num">1</span>
+      <span class="stat-label mono">robustness score</span>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="how">
+  <div class="section-tag mono">// how it works</div>
+  <div class="steps">
+    <div class="step" data-step="01">
+      <div class="step-num mono">01</div>
+      <h3 class="step-title">Upload your model</h3>
+      <p class="step-desc">Drop in a PyTorch or scikit-learn model with your tabular security dataset. AO8 validates it before touching anything.</p>
+    </div>
+    <div class="step-arrow">→</div>
+    <div class="step" data-step="02">
+      <div class="step-num mono">02</div>
+      <h3 class="step-title">Run attacks</h3>
+      <p class="step-desc">FGSM, PGD, and C&W generate adversarial samples. Performance is measured after each attack independently.</p>
+    </div>
+    <div class="step-arrow">→</div>
+    <div class="step" data-step="03">
+      <div class="step-num mono">03</div>
+      <h3 class="step-title">Apply defenses</h3>
+      <p class="step-desc">Three defense methods are tested one by one so you see the exact accuracy vs robustness tradeoff for each.</p>
+    </div>
+    <div class="step-arrow">→</div>
+    <div class="step" data-step="04">
+      <div class="step-num mono">04</div>
+      <h3 class="step-title">Get the report</h3>
+      <p class="step-desc">A structured report with plots and a robustness score. Exportable as PDF or JSON.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-tag mono">// what you can test</div>
+  <div class="cards">
+    <div class="card">
+      <div class="card-icon">⬡</div>
+      <h3 class="card-title">Intrusion detection</h3>
+      <p class="card-desc">Models trained on NSL-KDD, CICIDS2017, UNSW-NB15. Binary or multiclass.</p>
+      <div class="card-tag mono">IDS / IPS</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">⬡</div>
+      <h3 class="card-title">Malware classification</h3>
+      <p class="card-desc">PE header features, API call sequences, byte n-gram models.</p>
+      <div class="card-tag mono">Security ML</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">⬡</div>
+      <h3 class="card-title">Network traffic analysis</h3>
+      <p class="card-desc">Flow-based classifiers using packet-level and statistical features.</p>
+      <div class="card-tag mono">NetSec</div>
+    </div>
+  </div>
+</section>
+
+<section class="section cta-section">
+  <h2 class="cta-title">Ready to stress-test your model?</h2>
+  <a href="/upload" class="btn btn-primary btn-lg">Upload model →</a>
+</section>
+
+{% endblock %}
