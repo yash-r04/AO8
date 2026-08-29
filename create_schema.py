@@ -8,7 +8,7 @@ load_dotenv()
 conn = psycopg2.connect(os.getenv("DATABASE_URL"))
 cur = conn.cursor()
 
-cur.executescript = cur.execute  # psycopg2 uses execute
+#cur.executescript = cur.execute  # psycopg2 uses execute
 
 schema = """
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";

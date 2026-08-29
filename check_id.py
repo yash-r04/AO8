@@ -1,21 +1,20 @@
-# test_db.py
+# check_ids.py
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
-
 conn = psycopg2.connect(os.getenv("DATABASE_URL"), cursor_factory=RealDictCursor)
 cur = conn.cursor()
 
-print("--- USERS ---")
-cur.execute("SELECT id, email, provider, created_at FROM users;")
+print("--- YOUR MODELS ---")
+cur.execute("SELECT id, name, framework FROM ml_models WHERE upload_status = 'ready'")
 for row in cur.fetchall():
     print(dict(row))
 
-print("\n--- MODELS ---")
-cur.execute("SELECT id, name, framework, upload_status, file_size_bytes FROM ml_models;")
+print("\n--- YOUR DATASETS ---")
+cur.execute("SELECT id, name, n_samples FROM datasets")
 for row in cur.fetchall():
     print(dict(row))
 

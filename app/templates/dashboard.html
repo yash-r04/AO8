@@ -1,0 +1,164 @@
+<h2>Upload Model</h2>
+
+<form id="upload-form" enctype="multipart/form-data">
+  <select id="framework">
+  <option value="torchscript">PyTorch TorchScript (.pt) — full gradient support</option>
+  <option value="onnx">ONNX (.onnx) — cross-framework</option>
+  <option value="sklearn">Scikit-learn (.pkl)</option>
+</select>
+
+<input type="file" id="model-file" accept=".pt,.onnx,.pkl" />
+
+  <input type="file" id="model-file" accept=".onnx,.pkl" />
+  <button type="button" onclick="uploadModel()">Upload</button>
+</form>
+
+<div id="upload-status"></div>
+
+<h2>Upload Dataset</h2>
+
+<form id="dataset-form" enctype="multipart/form-data">
+  <input type="file" id="dataset-file" accept=".csv" />
+  <button type="button" onclick="uploadDataset()">Upload Dataset</button>
+</form>
+
+<div id="dataset-status"></div>
+
+<script>
+async function uploadDataset() {
+  const file = document.getElementById("dataset-file").files[0];
+  const status = document.getElementById("dataset-status");
+
+  if (!file) { status.innerText = "❌ Select a CSV file"; return; }
+
+  status.innerText = "⏳ Uploading dataset...";
+
+  const formData = new FormData();
+  formData.append("dataset_file", file);
+
+  try {
+    const resp = await fetch("/models/dataset/upload", {
+      method: "POST",
+      body: formData
+    });
+    const result = await resp.json();
+
+    if (result.status === "ready") {
+      status.innerText = `✅ Dataset uploaded — ${result.n_samples} samples, ${result.n_features} features`;
+    } else {
+      status.innerText = "❌ " + result.error;
+    }
+  } catch (err) {
+    status.innerText = "❌ " + err.message;
+  }
+}
+</script>
+
+<script>
+async function uploadModel() {
+  const framework = document.getElementById("framework").value;
+  const file = document.getElementById("model-file").files[0];
+  const status = document.getElementById("upload-status");
+
+  if (!file) { status.innerText = "❌ Select a file first"; return; }
+
+  status.innerText = "⏳ Uploading...";
+
+  const formData = new FormData();
+  formData.append("model_file", file);
+  formData.append("framework", framework);
+
+  try {
+    const resp = await fetch("/models/upload", {
+      method: "POST",
+      body: formData
+    });
+
+    const result = await resp.json();
+
+    if (result.status === "ready") {
+      status.innerText = `✅ Uploaded: ${result.filename} (${result.model_id})`;
+    } else {
+      status.innerText = "❌ " + result.error;
+    }
+  } catch (err) {
+    status.innerText = "❌ Request failed: " + err.message;
+  }
+}
+</script>
+
+<h2>Run Evaluation</h2>
+
+<div>
+  <label>Model ID:</label>
+  <input type="text" id="job-model-id" placeholder="paste model_id from upload" />
+
+  <label>Dataset ID:</label>
+  <input type="text" id="job-dataset-id" placeholder="paste dataset_id from upload" />
+
+  <label>Attacks:</label>
+  <label><input type="checkbox" value="fgsm" checked> FGSM</label>
+  <label><input type="checkbox" value="pgd"> PGD</label>
+  <label><input type="checkbox" value="cw"> C&W (slow)</label>
+
+  <label>Epsilon: <input type="number" id="epsilon" value="0.03" step="0.01" min="0.001" max="0.3"/></label>
+
+  <button type="button" onclick="submitJob()">Run Attack</button>
+</div>
+
+<div id="job-status"></div>
+
+<script>
+async function submitJob() {
+  const model_id   = document.getElementById("job-model-id").value.trim();
+  const dataset_id = document.getElementById("job-dataset-id").value.trim();
+  const epsilon    = parseFloat(document.getElementById("epsilon").value);
+  const status     = document.getElementById("job-status");
+
+  const attacks = [...document.querySelectorAll("input[type=checkbox]:checked")]
+                    .map(cb => cb.value);
+
+  if (!model_id || !dataset_id) {
+    status.innerText = "❌ Paste model ID and dataset ID";
+    return;
+  }
+
+  status.innerText = "⏳ Submitting job...";
+
+  const resp = await fetch("/evaluate/submit", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ model_id, dataset_id, attacks, epsilon })
+  });
+  const result = await resp.json();
+
+  if (result.job_id) {
+    status.innerText = `⏳ Job queued — ID: ${result.job_id}. Polling...`;
+    pollStatus(result.job_id);
+  } else {
+    status.innerText = "❌ " + result.error;
+  }
+}
+
+async function pollStatus(job_id) {
+  const status = document.getElementById("job-status");
+  const interval = setInterval(async () => {
+    const resp = await fetch(`/evaluate/status/${job_id}`);
+    const result = await resp.json();
+
+    if (result.status === "done") {
+      clearInterval(interval);
+      status.innerText = `✅ Job done! View results at /results/${job_id}`;
+    } else if (result.status === "failed") {
+      clearInterval(interval);
+      status.innerText = `❌ Job failed: ${result.error_message}`;
+    } else {
+      status.innerText = `⏳ Status: ${result.status}...`;
+    }
+  }, 3000);
+}
+</script>
+
+<a href="/results/history">
+  <button>View History & Results</button>
+</a>
