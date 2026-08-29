@@ -35,34 +35,53 @@
 <script>
 // Load all jobs on page load
 async function loadHistory() {
-  const resp = await fetch("/results/api/history");
-  const jobs = await resp.json();
   const container = document.getElementById("jobs-container");
+  try {
+    const resp = await fetch("/results/api/history");
 
-  if (jobs.length === 0) {
-    container.innerHTML = "<p>No evaluation jobs yet.</p>";
-    return;
+    // Show raw response if it's not JSON
+    if (!resp.ok) {
+      const text = await resp.text();
+      container.innerHTML = `<pre style="color:#ff4444">HTTP ${resp.status}:\n${text}</pre>`;
+      return;
+    }
+
+    const text = await resp.text();
+    let jobs;
+    try {
+      jobs = JSON.parse(text);
+    } catch (e) {
+      container.innerHTML = `<pre style="color:#ff4444">Bad JSON from server:\n${text}</pre>`;
+      return;
+    }
+
+    if (jobs.length === 0) {
+      container.innerHTML = "<p>No evaluation jobs yet.</p>";
+      return;
+    }
+
+    container.innerHTML = jobs.map(job => `
+      <div class="job" onclick="toggleDetail('${job.id}')">
+        <div style="display:flex; justify-content:space-between;">
+          <span>
+            <strong>${job.model_name || "Unknown model"}</strong>
+            on <strong>${job.dataset_name || "Unknown dataset"}</strong>
+          </span>
+          <span class="status-${job.status}">● ${job.status.toUpperCase()}</span>
+        </div>
+        <div style="color:#888; font-size:0.85rem; margin-top:0.3rem;">
+          ${new Date(job.queued_at).toLocaleString()} ·
+          Attacks: ${(job.attack_config?.attacks || []).join(", ") || "—"}
+        </div>
+        <div class="detail" id="detail-${job.id}">
+          <p style="color:#888">Loading results...</p>
+        </div>
+      </div>
+    `).join("");
+
+  } catch (err) {
+    container.innerHTML = `<pre style="color:#ff4444">Fetch error: ${err.message}</pre>`;
   }
-
-  container.innerHTML = jobs.map(job => `
-    <div class="job" onclick="toggleDetail('${job.id}')">
-      <div style="display:flex; justify-content:space-between;">
-        <span>
-          <strong>${job.model_name || "Unknown model"}</strong>
-          on <strong>${job.dataset_name || "Unknown dataset"}</strong>
-        </span>
-        <span class="status-${job.status}">● ${job.status.toUpperCase()}</span>
-      </div>
-      <div style="color:#888; font-size:0.85rem; margin-top:0.3rem;">
-        ${new Date(job.queued_at).toLocaleString()} ·
-        Attacks: ${JSON.parse(job.attack_config || '{}').attacks?.join(", ") || "—"}
-      </div>
-
-      <div class="detail" id="detail-${job.id}">
-        <p style="color:#888">Loading results...</p>
-      </div>
-    </div>
-  `).join("");
 }
 
 async function toggleDetail(jobId) {

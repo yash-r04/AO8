@@ -2,18 +2,32 @@
 from flask import Flask
 from flask_session import Session
 from app.config import Config
-import redis
+import json
+from datetime import datetime, date
+
+class CustomJSONProvider(Flask.json_provider_class):
+    def dumps(self, obj, **kwargs):
+        def default(o):
+            if isinstance(o, (datetime, date)):
+                return o.isoformat()
+            raise TypeError(f"Object of type {type(o)} is not JSON serializable")
+        return json.dumps(obj, default=default, **kwargs)
+
+    def loads(self, s, **kwargs):
+        return json.loads(s, **kwargs)
 
 def create_app():
     app = Flask(__name__)
+    app.json_provider_class = CustomJSONProvider
+    app.json = CustomJSONProvider(app)
     app.config.from_object(Config)
 
-    # Server-side sessions stored in Redis
+    import redis
     app.config["SESSION_TYPE"] = "redis"
     app.config["SESSION_REDIS"] = redis.from_url(
         Config.REDIS_URL,
         decode_responses=False,
-        protocol=2,        # force RESP2, Upstash doesn't fully support RESP3
+        protocol=2,
         ssl_cert_reqs=None
     )
     app.config["SESSION_PERMANENT"] = False
