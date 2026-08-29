@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Results{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="page-tag mono">// results</div>
+  <h1 class="page-title">Robustness report</h1>
+  <p class="page-sub">Job <span class="mono">{{ job_id }}</span></p>
+</div>
+
+<!-- shown until the job is done -->
+<div class="console" id="pendingPanel" style="display:none">
+  <div class="console-header">
+    <span class="console-dot red"></span><span class="console-dot yellow"></span><span class="console-dot green"></span>
+    <span class="console-title mono">ao8 // pipeline</span>
+  </div>
+  <div class="console-body" id="pendingBody">
+    <div class="console-line mono dim">&gt; waiting for job to finish...</div>
+  </div>
+</div>
+
+<!-- full report, hidden until job is done -->
+<div id="reportBody" style="display:none">
+  <section class="section">
+    <div class="score-wrap">
+      <svg width="140" height="140" viewBox="0 0 140 140">
+        <circle cx="70" cy="70" r="52" fill="none" stroke="var(--border)" stroke-width="10"/>
+        <circle id="scoreArc" cx="70" cy="70" r="52" fill="none" stroke="var(--accent)" stroke-width="10"
+                stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 70 70)"/>
+      </svg>
+      <div class="score-num-wrap">
+        <span id="scoreNum" class="mono">--</span>
+        <span id="scoreTag" class="mono"></span>
+      </div>
+    </div>
+
+    <div class="metrics-row">
+      <div class="metric"><span class="metric-label mono">clean acc</span><span id="mClean" class="metric-val">--</span></div>
+      <div class="metric"><span class="metric-label mono">FGSM acc</span><span id="mFgsm" class="metric-val">--</span></div>
+      <div class="metric"><span class="metric-label mono">PGD acc</span><span id="mPgd" class="metric-val">--</span></div>
+      <div class="metric"><span class="metric-label mono">C&amp;W acc</span><span id="mCw" class="metric-val">--</span></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-tag mono">// per-attack log</div>
+    <table class="log-table">
+      <div class="log-header mono"><span>attack</span><span>samples</span><span>acc</span><span>f1</span><span>status</span></div>
+      <div class="log-row mono"><span>FGSM</span><span id="lFgsmSamples">--</span><span id="lFgsmAcc">--</span><span id="lFgsmF1">--</span><span id="lFgsmStatus" class="log-status"></span></div>
+      <div class="log-row mono"><span>PGD</span><span id="lPgdSamples">--</span><span id="lPgdAcc">--</span><span id="lPgdF1">--</span><span id="lPgdStatus" class="log-status"></span></div>
+      <div class="log-row mono"><span>C&amp;W</span><span id="lCwSamples">--</span><span id="lCwAcc">--</span><span id="lCwF1">--</span><span id="lCwStatus" class="log-status"></span></div>
+    </table>
+  </section>
+
+  <section class="section export-actions">
+    <button class="btn btn-primary" onclick="window.location.href='/results/{{ job_id }}/download.pdf'">Download PDF</button>
+    <div id="safeValueButtons"></div>
+  </section>
+</div>
+
+<script>
+const jobId = "{{ job_id }}";
+
+async function pollAndRender() {
+  const resp = await fetch(`/evaluate/status/${jobId}`);
+  const status = await resp.json();
+
+  if (status.status !== 'done') {
+    document.getElementById('pendingPanel').style.display = 'block';
+    document.getElementById('reportBody').style.display = 'none';
+    if (status.status === 'failed') {
+      document.getElementById('pendingBody').innerHTML =
+        `<div class="console-line mono err">✗ job failed: ${status.error_message || 'unknown error'}</div>`;
+      return; // stop polling
+    }
+    document.getElementById('pendingBody').innerHTML =
+      `<div class="console-line mono dim">&gt; status: ${status.status}...</div>`;
+    setTimeout(pollAndRender, 3000);
+    return;
+  }
+
+  // job done -> pull full results and populate
+  const dataResp = await fetch(`/results/api/job/${jobId}`);
+  const data = await dataResp.json();
+  renderReport(data);
+  document.getElementById('pendingPanel').style.display = 'none';
+  document.getElementById('reportBody').style.display = 'block';
+}
+
+function renderReport(data) {
+  const byType = {};
+  data.attack_results.forEach(r => byType[r.attack_type] = r);
+
+  const score = Math.round(100 - (data.attack_results.reduce((s, r) => s + r.accuracy_drop, 0) / data.attack_results.length) * 100);
+  setText('scoreNum', score);
+  const tag = document.getElementById('scoreTag');
+  tag.textContent = score >= 75 ? 'robust' : score >= 50 ? 'moderate risk' : 'high risk';
+
+  const circumference = 326.7;
+  const offset = circumference - (score / 100) * circumference;
+  const arc = document.getElementById('scoreArc');
+  setTimeout(() => { arc.style.transition = 'stroke-dashoffset 1.2s ease'; arc.setAttribute('stroke-dashoffset', offset); }, 200);
+
+  if (byType.fgsm) setText('mClean', (byType.fgsm.clean_accuracy * 100).toFixed(1) + '%');
+  ['fgsm', 'pgd', 'cw'].forEach(a => {
+    const r = byType[a];
+    const cap = a === 'cw' ? 'Cw' : a[0].toUpperCase() + a.slice(1);
+    setText(`m${cap}`, r ? (r.robust_accuracy * 100).toFixed(1) + '%' : 'n/a');
+    setText(`l${cap}Samples`, r ? r.n_samples_total.toLocaleString() : '--');
+    setText(`l${cap}Acc`, r ? (r.robust_accuracy * 100).toFixed(1) + '%' : '--');
+    setText(`l${cap}F1`, r && r.f1 !== undefined ? r.f1.toFixed(2) : '--');
+    setStatus(`l${cap}Status`, r ? 'done' : 'skipped');
+
+    if (r && r.safe_values_s3_key) {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-ghost';
+      btn.textContent = `Download safe values (${cap})`;
+      btn.onclick = () => downloadSafeValues(a);
+      document.getElementById('safeValueButtons').appendChild(btn);
+    }
+  });
+}
+
+function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+function setStatus(id, status) { const el = document.getElementById(id); if (el) { el.textContent = status; el.className = `log-status mono ${status}`; } }
+
+async function downloadSafeValues(attackType) {
+  const resp = await fetch(`/results/api/job/${jobId}/download-safe-values/${attackType}`);
+  const data = await resp.json();
+  if (data.download_url) window.open(data.download_url, '_blank');
+}
+
+pollAndRender();
+</script>
+{% endblock %}

@@ -109,3 +109,22 @@ def download_safe_values(job_id, attack_type):
 
     url = generate_download_url(result["safe_values_s3_key"], expires_in=300)
     return jsonify({"download_url": url, "expires_in": 300})
+
+@results_bp.route("/results/<job_id>")
+@login_required
+def view_results(job_id):
+    user_id = session["user"]["id"]
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id FROM evaluation_jobs
+        WHERE id = %s AND user_id = %s
+    """, (job_id, user_id))
+    job = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not job:
+        return render_template("404.html"), 404  # or abort(404)
+
+    return render_template("results.html", job_id=job_id)

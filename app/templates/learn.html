@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Learn{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="page-tag mono">// primer</div>
+  <h1 class="page-title">Adversarial ML, in five minutes</h1>
+  <p class="page-sub">Everything you need to understand the attacks AO8 runs and how to read your report.</p>
+</div>
+
+<section class="section">
+  <div class="faq-list">
+
+    <details class="faq-item" open>
+      <summary class="faq-q">White-box vs. black-box attacks</summary>
+      <div class="faq-a">
+        <p><strong>White-box</strong> attacks assume the attacker has full access to the model —
+        architecture, weights, gradients. They craft perturbations using the model's own gradient,
+        which makes them the strongest possible test of robustness. AO8 runs white-box attacks because
+        it has your uploaded model directly: if you're not robust to white-box attacks, you're
+        definitely not robust to weaker black-box ones.</p>
+        <p><strong>Black-box</strong> attacks assume no internal access — the attacker can only query
+        the model and see outputs (or not even that). They rely on transferability or querying/estimating
+        gradients. They're a *lower bound* on how much damage a real attacker without insider access could do.</p>
+      </div>
+    </details>
+
+    <details class="faq-item">
+      <summary class="faq-q">FGSM — Fast Gradient Sign Method</summary>
+      <div class="faq-a">
+        <p>The simplest and fastest attack. It takes one step in the direction that increases the
+        model's loss the most: <code class="mono">x_adv = x + ε · sign(∇ₓ loss(x, y))</code>.
+        One gradient computation, done. Great as a cheap sanity check; usually the easiest attack for
+        a model to survive.</p>
+      </div>
+    </details>
+
+    <details class="faq-item">
+      <summary class="faq-q">PGD — Projected Gradient Descent</summary>
+      <div class="faq-a">
+        <p>FGSM's stronger sibling. Instead of one big step, PGD takes many small gradient steps and
+        "projects" the result back inside the allowed ε-ball after each step, so the perturbation never
+        exceeds the budget. Considered the standard benchmark for empirical robustness — if a model
+        survives PGD at a given ε, that's a meaningful signal.</p>
+      </div>
+    </details>
+
+    <details class="faq-item">
+      <summary class="faq-q">C&amp;W — Carlini &amp; Wagner</summary>
+      <div class="faq-a">
+        <p>An optimization-based attack that searches directly for the smallest perturbation that
+        flips the prediction, rather than working within a fixed ε. It's slower (often minutes instead
+        of seconds) but tends to find the true worst case, which is why AO8 flags it as the "may take a
+        while" option.</p>
+      </div>
+    </details>
+
+    <details class="faq-item">
+      <summary class="faq-q">What does epsilon (ε) mean?</summary>
+      <div class="faq-a">
+        <p>Epsilon is the attack's perturbation budget — the maximum amount any input feature is allowed
+        to change, usually measured in L∞ or L2 norm. A small ε (e.g. 0.01) means "barely visible"
+        perturbations; a larger ε (e.g. 0.3) means the attacker is allowed to change inputs more
+        aggressively. Robustness at low ε is a much higher bar to fail than robustness at high ε — always
+        read accuracy drop next to the ε it was measured at, not in isolation.</p>
+      </div>
+    </details>
+
+    <details class="faq-item">
+      <summary class="faq-q">How to read your AO8 report</summary>
+      <div class="faq-a">
+        <ul class="faq-list-plain">
+          <li><strong>Robustness score</strong> — a single 0–100 summary; above ~75 is "robust", 50–75
+            is "moderate risk", below 50 is "high risk".</li>
+          <li><strong>Clean accuracy</strong> — how the model performs with no attack, your baseline.</li>
+          <li><strong>Per-attack accuracy / accuracy drop</strong> — accuracy under that attack, and how
+            far it fell from clean. A big drop under FGSM (the weakest attack) is a bad sign; a big drop
+            only under C&amp;W is more expected.</li>
+          <li><strong>Flipped samples</strong> — individual inputs the attack successfully fooled, with
+            the features it perturbed most — useful for spotting which input features your model is
+            over-reliant on.</li>
+          <li><strong>Defense comparison bars</strong> — clean vs. robust accuracy before and after each
+            defense, so you can see the accuracy/robustness trade-off each one costs you.</li>
+        </ul>
+      </div>
+    </details>
+
+  </div>
+</section>
+
+{% endblock %}

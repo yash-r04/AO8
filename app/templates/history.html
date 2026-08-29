@@ -1,200 +1,90 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>AO8 — History</title>
-  <style>
-    body { background: #0a0a0a; color: #00ff88; font-family: monospace; padding: 2rem; }
-    h1 { color: #00ff88; }
-    .job { border: 1px solid #00ff8844; padding: 1rem; margin: 1rem 0; border-radius: 4px; cursor: pointer; }
-    .job:hover { border-color: #00ff88; }
-    .status-done    { color: #00ff88; }
-    .status-failed  { color: #ff4444; }
-    .status-queued  { color: #ffaa00; }
-    .status-running { color: #00aaff; }
-    .detail { display: none; margin-top: 1rem; border-top: 1px solid #333; padding-top: 1rem; }
-    .attack-card { background: #111; padding: 0.75rem; margin: 0.5rem 0; border-radius: 4px; }
-    .risk-high   { color: #ff4444; }
-    .risk-medium { color: #ffaa00; }
-    .risk-low    { color: #00ff88; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-    th, td { padding: 0.4rem 0.6rem; border: 1px solid #333; text-align: left; }
-    th { color: #888; }
-    .btn { background: #00ff8822; border: 1px solid #00ff88; color: #00ff88;
-           padding: 0.3rem 0.8rem; cursor: pointer; border-radius: 3px; font-family: monospace; }
-    .btn:hover { background: #00ff8844; }
-    a { color: #00aaff; }
-  </style>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block content %}
 
-<h1>AO8 — Evaluation History</h1>
-<p>Logged in as {{ user.email }} | <a href="/auth/logout">Logout</a> | <a href="/">Dashboard</a></p>
+<div class="page-header">
+  <div class="page-tag mono">// history</div>
+  <h1 class="page-title">Evaluation history</h1>
+  <p class="page-sub">All benchmark jobs you've run.</p>
+</div>
 
-<div id="jobs-container">Loading...</div>
+<div id="jobs-container" class="mono">Loading...</div>
 
 <script>
-// Load all jobs on page load
 async function loadHistory() {
   const container = document.getElementById("jobs-container");
   try {
     const resp = await fetch("/results/api/history");
-
-    // Show raw response if it's not JSON
     if (!resp.ok) {
-      const text = await resp.text();
-      container.innerHTML = `<pre style="color:#ff4444">HTTP ${resp.status}:\n${text}</pre>`;
+      container.innerHTML = `<pre class="hist-error">HTTP ${resp.status}</pre>`;
       return;
     }
-
-    const text = await resp.text();
-    let jobs;
-    try {
-      jobs = JSON.parse(text);
-    } catch (e) {
-      container.innerHTML = `<pre style="color:#ff4444">Bad JSON from server:\n${text}</pre>`;
-      return;
-    }
-
+    const jobs = await resp.json();
     if (jobs.length === 0) {
-      container.innerHTML = "<p>No evaluation jobs yet.</p>";
+      container.innerHTML = "<p class='page-sub'>No evaluation jobs yet. <a href='/test'>Run one →</a></p>";
       return;
     }
-
     container.innerHTML = jobs.map(job => `
-      <div class="job" onclick="toggleDetail('${job.id}')">
-        <div style="display:flex; justify-content:space-between;">
-          <span>
-            <strong>${job.model_name || "Unknown model"}</strong>
-            on <strong>${job.dataset_name || "Unknown dataset"}</strong>
-          </span>
-          <span class="status-${job.status}">● ${job.status.toUpperCase()}</span>
+      <div class="hist-job" onclick="toggleDetail('${job.id}')">
+        <div class="hist-job-top">
+          <span><strong>${job.model_name || "Unknown model"}</strong> on <strong>${job.dataset_name || "Unknown dataset"}</strong></span>
+          <span class="hist-status hist-status-${job.status}">● ${job.status.toUpperCase()}</span>
         </div>
-        <div style="color:#888; font-size:0.85rem; margin-top:0.3rem;">
-          ${new Date(job.queued_at).toLocaleString()} ·
-          Attacks: ${(job.attack_config?.attacks || []).join(", ") || "—"}
+        <div class="hist-job-meta">
+          ${new Date(job.queued_at).toLocaleString()} · Attacks: ${(job.attack_config?.attacks || []).join(", ") || "—"}
         </div>
-        <div class="detail" id="detail-${job.id}">
-          <p style="color:#888">Loading results...</p>
-        </div>
+        <div class="hist-detail" id="detail-${job.id}"></div>
       </div>
     `).join("");
-
   } catch (err) {
-    container.innerHTML = `<pre style="color:#ff4444">Fetch error: ${err.message}</pre>`;
+    container.innerHTML = `<pre class="hist-error">${err.message}</pre>`;
   }
 }
 
 async function toggleDetail(jobId) {
   const detail = document.getElementById("detail-" + jobId);
-  if (detail.style.display === "block") {
-    detail.style.display = "none";
-    return;
-  }
+  if (detail.style.display === "block") { detail.style.display = "none"; return; }
   detail.style.display = "block";
-
   if (detail.dataset.loaded) return;
   detail.dataset.loaded = "true";
 
   const resp = await fetch("/results/api/job/" + jobId);
   const data = await resp.json();
+  if (data.error) { detail.innerHTML = `<p class="hist-error">${data.error}</p>`; return; }
+  if (data.job.status !== "done") { detail.innerHTML = `<p>Job is ${data.job.status}.</p>`; return; }
 
-  if (data.error) {
-    detail.innerHTML = `<p style="color:#ff4444">${data.error}</p>`;
-    return;
-  }
-
-  if (data.job.status !== "done") {
-    detail.innerHTML = `<p style="color:#ffaa00">Job is ${data.job.status}.</p>`;
-    return;
-  }
-
-  // Attack results cards
-  const attackCards = data.attack_results.map(r => {
+  const cards = data.attack_results.map(r => {
     const riskClass = r.risk_score > 60 ? "risk-high" : r.risk_score > 30 ? "risk-medium" : "risk-low";
     return `
-      <div class="attack-card">
-        <div style="display:flex; justify-content:space-between;">
+      <div class="hist-attack-card">
+        <div class="hist-attack-top">
           <strong>${r.attack_type.toUpperCase()}</strong>
           <span class="${riskClass}">Risk: ${r.risk_score.toFixed(1)}</span>
         </div>
-        <div style="display:flex; gap:2rem; margin-top:0.5rem; font-size:0.85rem;">
+        <div class="hist-attack-stats">
           <span>Clean acc: <strong>${(r.clean_accuracy * 100).toFixed(1)}%</strong></span>
           <span>Robust acc: <strong>${(r.robust_accuracy * 100).toFixed(1)}%</strong></span>
-          <span>Drop: <strong style="color:#ff4444">-${(r.accuracy_drop * 100).toFixed(1)}%</strong></span>
-          <span>Flipped: <strong>${r.n_samples_flipped}/${r.n_samples_total}</strong></span>
+          <span class="risk-high">Drop: -${(r.accuracy_drop * 100).toFixed(1)}%</span>
+          <span>Flipped: ${r.n_samples_flipped}/${r.n_samples_total}</span>
         </div>
-        ${r.safe_values_s3_key ? `
-          <button class="btn" style="margin-top:0.5rem"
-            onclick="downloadSafeValues('${jobId}', '${r.attack_type}', event)">
-            ⬇ Download Safe Values
-          </button>` : ""}
-      </div>
-    `;
+        ${r.safe_values_s3_key ? `<button class="btn btn-ghost" onclick="downloadSafeValues('${jobId}','${r.attack_type}',event)">⬇ Download Safe Values</button>` : ""}
+      </div>`;
   }).join("");
 
-  // Flipped samples table
-  const flippedRows = data.flipped_samples.slice(0, 20).map(s => `
-    <tr>
-      <td>${s.sample_index}</td>
-      <td>${s.attack_type}</td>
-      <td>${s.original_label}</td>
-      <td>${s.clean_prediction}</td>
-      <td style="color:#ff4444">${s.adv_prediction}</td>
-      <td>${s.perturbation_l2.toFixed(4)}</td>
-      <td style="font-size:0.75rem">${formatTopFeatures(s.most_perturbed_features)}</td>
-    </tr>
-  `).join("");
-
-  detail.innerHTML = `
-    <h3 style="margin-top:1rem">Attack Results</h3>
-    ${attackCards}
-
-    ${data.flipped_samples.length > 0 ? `
-      <h3 style="margin-top:1rem">
-        Flipped Samples (${data.flipped_samples.length} total — showing 20)
-      </h3>
-      <p style="color:#888; font-size:0.85rem">
-        These are the inputs the attack successfully fooled. The most perturbed features
-        tell you which parts of the input the model is most vulnerable to.
-      </p>
-      <table>
-        <tr>
-          <th>Sample #</th><th>Attack</th><th>True label</th>
-          <th>Clean pred</th><th>Adv pred</th>
-          <th>L2 perturbation</th><th>Top vulnerable features</th>
-        </tr>
-        ${flippedRows}
-      </table>
-    ` : "<p style='color:#888'>No samples were flipped.</p>"}
-  `;
+  detail.innerHTML = `<h3>Attack Results</h3>${cards}
+    <a class="btn btn-ghost" href="/results/${jobId}">Open full report →</a>`;
 }
 
 async function downloadSafeValues(jobId, attackType, event) {
   event.stopPropagation();
   const btn = event.target;
   btn.innerText = "⏳ Generating link...";
-
   const resp = await fetch(`/results/api/job/${jobId}/download-safe-values/${attackType}`);
   const data = await resp.json();
-
-  if (data.download_url) {
-    window.open(data.download_url, "_blank");
-    btn.innerText = "✅ Download started";
-  } else {
-    btn.innerText = "❌ " + data.error;
-  }
-}
-
-function formatTopFeatures(features) {
-  if (!features) return "—";
-  const parsed = typeof features === "string" ? JSON.parse(features) : features;
-  return parsed.slice(0, 3)
-    .map(f => `f${f.feature_idx}(${f.delta > 0 ? "+" : ""}${f.delta.toFixed(3)})`)
-    .join(", ");
+  if (data.download_url) { window.open(data.download_url, "_blank"); btn.innerText = "✅ Download started"; }
+  else btn.innerText = "❌ " + data.error;
 }
 
 loadHistory();
 </script>
-
-</body>
-</html>
+{% endblock %}

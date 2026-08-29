@@ -1301,3 +1301,56 @@ a:hover { color: var(--accent2); }
   .navbar { padding: 0 1.25rem; }
   .main-content { padding: 0 1.25rem 3rem; }
 }
+
+/* === LEARN PAGE === */
+.faq-list { display: flex; flex-direction: column; gap: 0.75rem; max-width: 760px; }
+.faq-item {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+}
+.faq-q {
+  cursor: pointer; font-weight: 700; font-size: 1.05rem; color: var(--text2);
+  list-style: none;
+}
+.faq-q::-webkit-details-marker { display: none; }
+.faq-q::before { content: '+ '; color: var(--accent); }
+.faq-item[open] .faq-q::before { content: '– '; }
+.faq-a { margin-top: 0.75rem; color: var(--text3); line-height: 1.7; }
+.faq-a code { font-family: var(--font-mono); background: var(--bg3); padding: 0.1rem 0.4rem; border-radius: 4px; }
+.faq-list-plain { margin-left: 1.2rem; }
+.faq-list-plain li { margin-bottom: 0.5rem; }
+
+/* === RESULTS PAGE === */
+.score-wrap { position: relative; width: 140px; margin: 0 auto 2rem; }
+.score-num-wrap {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+#scoreNum { font-size: 2rem; font-weight: 800; color: var(--text); }
+#scoreTag { font-size: 0.7rem; color: var(--accent); text-transform: uppercase; }
+.metrics-row { display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap; }
+.metric { text-align: center; }
+.metric-label { display: block; color: var(--text3); font-size: 0.7rem; margin-bottom: 0.25rem; }
+.metric-val { font-size: 1.4rem; font-weight: 700; }
+
+/* === HISTORY PAGE (re-skin) === */
+.hist-job {
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem; margin: 0.75rem 0; cursor: pointer; background: var(--bg2);
+  transition: border-color var(--transition);
+}
+.hist-job:hover { border-color: var(--border2); }
+.hist-job-top { display: flex; justify-content: space-between; color: var(--text2); }
+.hist-job-meta { color: var(--text3); font-size: 0.8rem; margin-top: 0.3rem; }
+.hist-status-done    { color: var(--accent); }
+.hist-status-failed  { color: var(--attack); }
+.hist-status-queued  { color: var(--warn); }
+.hist-status-running { color: var(--accent2); }
+.hist-detail { display: none; margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+.hist-attack-card { background: var(--bg3); padding: 0.75rem; margin: 0.5rem 0; border-radius: var(--radius); }
+.hist-attack-top { display: flex; justify-content: space-between; }
+.hist-attack-stats { display: flex; gap: 1.5rem; margin-top: 0.5rem; font-size: 0.85rem; flex-wrap: wrap; }
+.risk-high   { color: var(--attack); }
+.risk-medium { color: var(--warn); }
+.risk-low    { color: var(--accent); }
+.hist-error  { color: var(--attack); white-space: pre-wrap; }

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <div class="hero-copy">
+    <div class="hero-tag mono">v1.0 // white-box adversarial testing</div>
+    <h1 class="hero-title">
+      Break your model<br>
+      <span class="accent">before attackers do.</span>
+    </h1>
+    <p class="hero-sub">
+      AO8 runs FGSM, PGD, and C&amp;W attacks against your security ML model,
+      applies defenses, and gives you a clear robustness report.
+    </p>
+    <div class="hero-actions">
+      {% if current_user.is_authenticated %}
+        <a href="{{ url_for('test.index') }}" class="btn btn-primary">Go to Test</a>
+      {% else %}
+        <a href="#" class="btn btn-primary" onclick="openLoginModal(); return false;">Sign up free</a>
+      {% endif %}
+      <a href="{{ url_for('learn') }}" class="btn btn-ghost">Learn the basics</a>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><span class="stat-num">3</span><span class="stat-label mono">attack types</span></div>
+      <div class="stat-divider"></div>
+      <div class="stat"><span class="stat-num">3</span><span class="stat-label mono">defense methods</span></div>
+      <div class="stat-divider"></div>
+      <div class="stat"><span class="stat-num">1</span><span class="stat-label mono">robustness score</span></div>
+    </div>
+  </div>
+
+  <div class="hero-panel">
+    <div class="panel-card panel-main">
+      <div class="panel-header">
+        <span class="mono">robustness overview</span>
+        <span class="panel-pill mono">live</span>
+      </div>
+      <div class="panel-score">87.4%</div>
+      <div class="panel-meta"><span>attack success</span><span class="mono">12.6%</span></div>
+      <div class="panel-bars">
+        <div class="panel-bar"><span style="width: 88%"></span></div>
+        <div class="panel-bar"><span style="width: 72%"></span></div>
+        <div class="panel-bar"><span style="width: 64%"></span></div>
+      </div>
+    </div>
+    <div class="panel-mini">
+      <div><span class="mono panel-mini-label">model</span><strong>SecurityNet X</strong></div>
+      <span class="panel-mini-badge mono">safe</span>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="how">
+  <div class="section-tag mono">// how it works</div>
+  <div class="steps">
+    <div class="step" data-step="01">
+      <div class="step-num mono">01</div>
+      <h3 class="step-title">Sign up / log in</h3>
+      <p class="step-desc">Continue with Google or GitHub — no separate password to manage.</p>
+    </div>
+    <div class="step-arrow">→</div>
+    <div class="step" data-step="02">
+      <div class="step-num mono">02</div>
+      <h3 class="step-title">Drop your model + dataset</h3>
+      <p class="step-desc">Drag a PyTorch/ONNX/sklearn model and a CSV dataset onto the Test page. IDs are wired up automatically.</p>
+    </div>
+    <div class="step-arrow">→</div>
+    <div class="step" data-step="03">
+      <div class="step-num mono">03</div>
+      <h3 class="step-title">Pick attacks &amp; run</h3>
+      <p class="step-desc">Check FGSM / PGD / C&amp;W, hit run. Not sure what these mean? <a href="{{ url_for('learn') }}">Read the primer</a>.</p>
+    </div>
+    <div class="step-arrow">→</div>
+    <div class="step" data-step="04">
+      <div class="step-num mono">04</div>
+      <h3 class="step-title">Read the report</h3>
+      <p class="step-desc">Robustness score, per-attack accuracy drop, flipped samples, and PDF / safe-values export.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-tag mono">// what you can test</div>
+  <div class="cards">
+    <div class="card">
+      <div class="card-icon">⬡</div>
+      <h3 class="card-title">Intrusion detection</h3>
+      <p class="card-desc">Models trained on NSL-KDD, CICIDS2017, UNSW-NB15. Binary or multiclass.</p>
+      <div class="card-tag mono">IDS / IPS</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">⬡</div>
+      <h3 class="card-title">Malware classification</h3>
+      <p class="card-desc">PE header features, API call sequences, byte n-gram models.</p>
+      <div class="card-tag mono">Security ML</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">⬡</div>
+      <h3 class="card-title">Network traffic analysis</h3>
+      <p class="card-desc">Flow-based classifiers using packet-level and statistical features.</p>
+      <div class="card-tag mono">NetSec</div>
+    </div>
+  </div>
+</section>
+
+<section class="section cta-section">
+  <h2 class="cta-title">Ready to stress-test your model?</h2>
+  {% if current_user.is_authenticated %}
+    <a href="{{ url_for('test.index') }}" class="btn btn-primary btn-lg">Go to Test →</a>
+  {% else %}
+    <a href="#" class="btn btn-primary btn-lg" onclick="openLoginModal(); return false;">Sign up →</a>
+  {% endif %}
+</section>
+
+{% endblock %}

@@ -66,6 +66,24 @@
     {% block content %}{% endblock %}
   </main>
 
+  <div class="nav-links">
+  <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">Home</a>
+  <a href="/learn" class="nav-link {% if request.path == '/learn' %}active{% endif %}">Learn</a>
+  {% if current_user.is_authenticated %}
+    <a href="/test" class="nav-link {% if request.path.startswith('/test') %}active{% endif %}">Test</a>
+    <a href="/history" class="nav-link {% if request.path.startswith('/history') %}active{% endif %}">History</a>
+  {% endif %}
+</div>
+<div class="nav-status">
+  <span class="status-dot"></span>
+  <span class="mono">system ready</span>
+</div>
+{% if current_user.is_authenticated %}
+  <a href="/auth/logout" class="btn-login mono">Sign out</a>
+{% else %}
+  <button class="btn-login mono" onclick="openLoginModal()">Sign in</button>
+{% endif %}
+
   <footer class="footer">
     <span class="mono">AO8 // Adversarial Robustness Framework</span>
     <span class="mono footer-right">Yashaswini C Rao</span>
