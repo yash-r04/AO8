@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Test Your Model{% endblock %}
+{% block content %}
+
+<section class="section">
+  <div class="section-tag mono">// 01 upload model</div>
+  <div class="card dropzone" id="model-dropzone">
+    <input type="file" id="model-file" accept=".pt,.onnx,.pkl" hidden />
+    <div class="dropzone-body" id="model-dropzone-body">
+      <div class="dropzone-icon">⬆</div>
+      <p class="dropzone-title">Drop your model file here</p>
+      <p class="dropzone-sub mono">or click to browse — .pt, .onnx, .pkl</p>
+    </div>
+    <select id="framework" class="framework-select mono" onclick="event.stopPropagation()">
+      <option value="torchscript">PyTorch TorchScript (.pt) — full gradient support</option>
+      <option value="onnx">ONNX (.onnx) — cross-framework</option>
+      <option value="sklearn">Scikit-learn (.pkl)</option>
+    </select>
+  </div>
+  <div id="upload-status" class="upload-status mono"></div>
+</section>
+
+<section class="section">
+  <div class="section-tag mono">// 02 upload dataset</div>
+  <div class="card dropzone" id="dataset-dropzone">
+    <input type="file" id="dataset-file" accept=".csv" hidden />
+    <div class="dropzone-body" id="dataset-dropzone-body">
+      <div class="dropzone-icon">⬆</div>
+      <p class="dropzone-title">Drop your dataset here</p>
+      <p class="dropzone-sub mono">or click to browse — .csv, last column = label</p>
+    </div>
+  </div>
+  <div id="dataset-status" class="upload-status mono"></div>
+</section>
+
+<section class="section">
+  <div class="section-tag mono">// 03 run evaluation</div>
+  <div class="card">
+    <div class="eval-ids mono">
+      <div><span class="eval-id-label">model:</span> <span id="model-id-display">— upload a model above —</span></div>
+      <div><span class="eval-id-label">dataset:</span> <span id="dataset-id-display">— upload a dataset above —</span></div>
+    </div>
+
+    <div class="attack-row">
+      <label class="attack-chip"><input type="checkbox" value="fgsm" checked> FGSM</label>
+      <label class="attack-chip"><input type="checkbox" value="pgd"> PGD</label>
+      <label class="attack-chip"><input type="checkbox" value="cw"> C&amp;W (slow)</label>
+    </div>
+
+    <label class="epsilon-row mono">
+      Epsilon
+      <input type="number" id="epsilon" value="0.03" step="0.01" min="0.001" max="0.3"/>
+    </label>
+
+    <button type="button" class="btn btn-primary" id="run-btn" onclick="submitJob()" disabled>Run Attack</button>
+  </div>
+
+  <div id="job-status" class="upload-status mono"></div>
+</section>
+
+<a href="{{ url_for('results.history') }}" class="btn btn-ghost">View History &amp; Results →</a>
+
+<style>
+  .dropzone { cursor: pointer; border: 1.5px dashed var(--border, #333); text-align: center; padding: 2rem 1rem; transition: border-color .15s, background .15s; }
+  .dropzone.dragover { border-color: var(--accent, #6cf); background: rgba(108,204,255,0.06); }
+  .dropzone.done { border-style: solid; border-color: var(--accent, #6cf); }
+  .dropzone-icon { font-size: 1.5rem; margin-bottom: .25rem; }
+  .dropzone-title { font-weight: 600; margin: 0; }
+  .dropzone-sub { color: var(--text3, #888); font-size: .78rem; margin-top: .25rem; }
+  .framework-select { display: block; margin: 1rem auto 0; }
+  .upload-status { min-height: 1.2rem; margin-top: .5rem; font-size: .82rem; }
+  .eval-ids { display: flex; flex-direction: column; gap: .35rem; margin-bottom: 1.25rem; font-size: .82rem; }
+  .eval-id-label { color: var(--text3, #888); margin-right: .5rem; }
+  .attack-row { display: flex; gap: .75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .attack-chip { display: flex; align-items: center; gap: .4rem; border: 1px solid var(--border, #333); border-radius: 999px; padding: .35rem .85rem; font-size: .85rem; cursor: pointer; }
+  .epsilon-row { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.25rem; font-size: .85rem; }
+  .epsilon-row input { width: 5rem; }
+</style>
+
+<script>
+let uploadedModelId = null;
+let uploadedDatasetId = null;
+
+function updateRunButton() {
+  document.getElementById("run-btn").disabled = !(uploadedModelId && uploadedDatasetId);
+}
+
+function wireDropzone(zoneId, inputId, onFile) {
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+
+  zone.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => {
+    if (input.files[0]) onFile(input.files[0]);
+  });
+
+  ["dragenter", "dragover"].forEach(evt =>
+    zone.addEventListener(evt, e => {
+      e.preventDefault();
+      zone.classList.add("dragover");
+    })
+  );
+  ["dragleave", "drop"].forEach(evt =>
+    zone.addEventListener(evt, e => {
+      e.preventDefault();
+      zone.classList.remove("dragover");
+    })
+  );
+  zone.addEventListener("drop", e => {
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      input.files = e.dataTransfer.files;
+      onFile(file);
+    }
+  });
+}
+
+wireDropzone("model-dropzone", "model-file", uploadModel);
+wireDropzone("dataset-dropzone", "dataset-file", uploadDataset);
+
+async function uploadDataset(file) {
+  const status = document.getElementById("dataset-status");
+  status.innerText = "⏳ Uploading dataset...";
+
+  const formData = new FormData();
+  formData.append("dataset_file", file);
+
+  try {
+    const resp = await fetch("/models/dataset/upload", {
+      method: "POST",
+      body: formData
+    });
+    const result = await resp.json();
+
+    if (result.status === "ready") {
+      status.innerText = `✅ ${file.name} — ${result.n_samples} samples, ${result.n_features} features`;
+      document.getElementById("dataset-dropzone").classList.add("done");
+      document.getElementById("dataset-id-display").innerText = result.dataset_id;
+      uploadedDatasetId = result.dataset_id;
+      updateRunButton();
+    } else {
+      status.innerText = "❌ " + result.error;
+    }
+  } catch (err) {
+    status.innerText = "❌ " + err.message;
+  }
+}
+
+async function uploadModel(file) {
+  const framework = document.getElementById("framework").value;
+  const status = document.getElementById("upload-status");
+  status.innerText = "⏳ Uploading...";
+
+  const formData = new FormData();
+  formData.append("model_file", file);
+  formData.append("framework", framework);
+
+  try {
+    const resp = await fetch("/models/upload", {
+      method: "POST",
+      body: formData
+    });
+    const result = await resp.json();
+
+    if (result.status === "ready") {
+      status.innerText = `✅ ${result.filename} uploaded`;
+      document.getElementById("model-dropzone").classList.add("done");
+      document.getElementById("model-id-display").innerText = result.model_id;
+      uploadedModelId = result.model_id;
+      updateRunButton();
+    } else {
+      status.innerText = "❌ " + result.error;
+    }
+  } catch (err) {
+    status.innerText = "❌ Request failed: " + err.message;
+  }
+}
+
+async function submitJob() {
+  const epsilon = parseFloat(document.getElementById("epsilon").value);
+  const status  = document.getElementById("job-status");
+
+  const attacks = [...document.querySelectorAll(".attack-chip input:checked")]
+                    .map(cb => cb.value);
+
+  if (!uploadedModelId || !uploadedDatasetId) {
+    status.innerText = "❌ Upload a model and dataset first";
+    return;
+  }
+
+  status.innerText = "⏳ Submitting job...";
+
+  const resp = await fetch("/evaluate/submit", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      model_id: uploadedModelId,
+      dataset_id: uploadedDatasetId,
+      attacks,
+      epsilon
+    })
+  });
+  const result = await resp.json();
+
+  if (result.job_id) {
+    status.innerText = `⏳ Job queued — ID: ${result.job_id}. Polling...`;
+    pollStatus(result.job_id);
+  } else {
+    status.innerText = "❌ " + result.error;
+  }
+}
+
+async function pollStatus(job_id) {
+  const status = document.getElementById("job-status");
+  const interval = setInterval(async () => {
+    const resp = await fetch(`/evaluate/status/${job_id}`);
+    const result = await resp.json();
+
+    if (result.status === "done") {
+      clearInterval(interval);
+      status.innerHTML = `✅ Job done! <a href="/results/${job_id}">View results</a>`;
+    } else if (result.status === "failed") {
+      clearInterval(interval);
+      status.innerText = `❌ Job failed: ${result.error_message}`;
+    } else {
+      status.innerText = `⏳ Status: ${result.status}...`;
+    }
+  }, 3000);
+}
+</script>
+
+{% endblock %}

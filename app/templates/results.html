@@ -35,31 +35,103 @@
     </div>
 
     <div class="metrics-row">
-      <div class="metric"><span class="metric-label mono">clean acc</span><span id="mClean" class="metric-val">--</span></div>
-      <div class="metric"><span class="metric-label mono">FGSM acc</span><span id="mFgsm" class="metric-val">--</span></div>
-      <div class="metric"><span class="metric-label mono">PGD acc</span><span id="mPgd" class="metric-val">--</span></div>
-      <div class="metric"><span class="metric-label mono">C&amp;W acc</span><span id="mCw" class="metric-val">--</span></div>
+      <div class="metric">
+        <span class="metric-label mono">clean acc <span class="metric-info" title="How often the model was correct on the original, unmodified data — before any attack ran.">ⓘ</span></span>
+        <span id="mClean" class="metric-val">--</span>
+        <p class="metric-explain">Accuracy with no attack applied. This is your baseline — everything below is measured against it.</p>
+      </div>
+      <div class="metric">
+        <span class="metric-label mono">FGSM acc <span class="metric-info" title="Accuracy after a single fast gradient-sign perturbation.">ⓘ</span></span>
+        <span id="mFgsm" class="metric-val">--</span>
+        <p class="metric-explain">Accuracy after the fastest, weakest attack. A big drop from clean acc here means the model is very fragile.</p>
+      </div>
+      <div class="metric">
+        <span class="metric-label mono">PGD acc <span class="metric-info" title="Accuracy after an iterative, stronger perturbation.">ⓘ</span></span>
+        <span id="mPgd" class="metric-val">--</span>
+        <p class="metric-explain">Accuracy after the standard benchmark attack. If this holds close to clean acc, that's a meaningful robustness signal.</p>
+      </div>
+      <div class="metric">
+        <span class="metric-label mono">C&amp;W acc <span class="metric-info" title="Accuracy after the minimum-distortion attack.">ⓘ</span></span>
+        <span id="mCw" class="metric-val">--</span>
+        <p class="metric-explain">Accuracy after the attack that searches for the smallest perturbation needed to fool the model.</p>
+      </div>
     </div>
+
+    <div class="flip-summary mono" id="flipSummary"></div>
   </section>
 
   <section class="section">
     <div class="section-tag mono">// per-attack log</div>
+    <p class="page-sub">
+      <strong>drop</strong> = clean acc − robust acc (net accuracy lost).
+      <strong>risk score</strong> = how dangerous this attack is overall (higher = worse).
+      <strong>flipped</strong> = individual predictions that changed, in either direction — this can be non-zero even when drop is near zero, if roughly as many wrong→right flips happened as right→wrong ones.
+    </p>
     <table class="log-table">
-      <div class="log-header mono"><span>attack</span><span>samples</span><span>acc</span><span>f1</span><span>status</span></div>
-      <div class="log-row mono"><span>FGSM</span><span id="lFgsmSamples">--</span><span id="lFgsmAcc">--</span><span id="lFgsmF1">--</span><span id="lFgsmStatus" class="log-status"></span></div>
-      <div class="log-row mono"><span>PGD</span><span id="lPgdSamples">--</span><span id="lPgdAcc">--</span><span id="lPgdF1">--</span><span id="lPgdStatus" class="log-status"></span></div>
-      <div class="log-row mono"><span>C&amp;W</span><span id="lCwSamples">--</span><span id="lCwAcc">--</span><span id="lCwF1">--</span><span id="lCwStatus" class="log-status"></span></div>
+      <div class="log-header mono"><span>attack</span><span>samples</span><span>robust acc</span><span>drop</span><span>risk</span><span>flipped</span><span>status</span></div>
+      <div class="log-row mono"><span>FGSM</span><span id="lFgsmSamples">--</span><span id="lFgsmAcc">--</span><span id="lFgsmDrop">--</span><span id="lFgsmRisk">--</span><span id="lFgsmFlipped">--</span><span id="lFgsmStatus" class="log-status"></span></div>
+      <div class="log-row mono"><span>PGD</span><span id="lPgdSamples">--</span><span id="lPgdAcc">--</span><span id="lPgdDrop">--</span><span id="lPgdRisk">--</span><span id="lPgdFlipped">--</span><span id="lPgdStatus" class="log-status"></span></div>
+      <div class="log-row mono"><span>C&amp;W</span><span id="lCwSamples">--</span><span id="lCwAcc">--</span><span id="lCwDrop">--</span><span id="lCwRisk">--</span><span id="lCwFlipped">--</span><span id="lCwStatus" class="log-status"></span></div>
     </table>
   </section>
 
+  <!-- NEW: per-sample flipped breakdown, grouped by attack type -->
+  <section class="section" id="flippedSection" style="display:none">
+    <div class="section-tag mono">// flipped samples</div>
+    <p class="page-sub">The individual data points each attack successfully fooled, ranked by how small a perturbation it took (smallest = most fragile).</p>
+    <div id="flippedTabs" class="attack-row"></div>
+    <div id="flippedTableWrap"></div>
+  </section>
+
   <section class="section export-actions">
+    <!-- No backend route serves this PDF yet — wire this up once you build it,
+         or remove the button until then. -->
     <button class="btn btn-primary" onclick="window.location.href='/results/{{ job_id }}/download.pdf'">Download PDF</button>
     <div id="safeValueButtons"></div>
   </section>
 </div>
 
+<style>
+  .flipped-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: 1rem; }
+  .flipped-table th, .flipped-table td { text-align: left; padding: .5rem .75rem; border-bottom: 1px solid var(--border); }
+  .flipped-table th { color: var(--text3); font-weight: 500; font-family: var(--font-mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+  .flip-badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .72rem; font-family: var(--font-mono); }
+  .flip-badge.flipped { background: rgba(255,80,80,0.12); color: var(--attack, #f55); }
+
+  .metric-info { cursor: help; color: var(--text3, #888); font-size: .78rem; margin-left: .2rem; }
+  .metric-explain { font-size: .72rem; color: var(--text3, #888); margin-top: .35rem; line-height: 1.35; max-width: 16rem; }
+  .flip-summary { margin-top: 1.25rem; padding: .75rem 1rem; border: 1px solid var(--border, #333); border-radius: 8px; font-size: .8rem; }
+  .flip-summary .flip-row { display: flex; justify-content: space-between; padding: .25rem 0; }
+  .flip-summary .flip-row + .flip-row { border-top: 1px dashed var(--border, #333); }
+
+  /* Attack tabs - fgsm/pgd/cw selector */
+  #flippedTabs { display: flex; gap: .5rem; margin: 1rem 0; }
+  #flippedTabs .attack-chip {
+    border: 1px solid var(--border, #333);
+    border-radius: 8px;
+    padding: .5rem 1.1rem;
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .03em;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text3, #888);
+    transition: all .15s ease;
+  }
+  #flippedTabs .attack-chip:hover {
+    border-color: var(--accent, #6cf);
+    color: var(--text, #eee);
+  }
+  #flippedTabs .attack-chip.active {
+    border-color: var(--accent, #6cf);
+    background: var(--accent, #6cf);
+    color: var(--bg, #0a0a0a);
+  }
+</style>
+
 <script>
 const jobId = "{{ job_id }}";
+let currentFlipped = [];
 
 async function pollAndRender() {
   const resp = await fetch(`/evaluate/status/${jobId}`);
@@ -91,8 +163,10 @@ function renderReport(data) {
   const byType = {};
   data.attack_results.forEach(r => byType[r.attack_type] = r);
 
-  const score = Math.round(100 - (data.attack_results.reduce((s, r) => s + r.accuracy_drop, 0) / data.attack_results.length) * 100);
-  setText('scoreNum', score);
+  // Fixed: Math.round() was hiding a real 99.5% behind a misleading "100%".
+  // Kept to 1 decimal place so small-but-real drops stay visible.
+  const score = 100 - (data.attack_results.reduce((s, r) => s + r.accuracy_drop, 0) / data.attack_results.length) * 100;
+  setText('scoreNum', score.toFixed(1));
   const tag = document.getElementById('scoreTag');
   tag.textContent = score >= 75 ? 'robust' : score >= 50 ? 'moderate risk' : 'high risk';
 
@@ -102,14 +176,23 @@ function renderReport(data) {
   setTimeout(() => { arc.style.transition = 'stroke-dashoffset 1.2s ease'; arc.setAttribute('stroke-dashoffset', offset); }, 200);
 
   if (byType.fgsm) setText('mClean', (byType.fgsm.clean_accuracy * 100).toFixed(1) + '%');
+
+  const flipRows = [];
   ['fgsm', 'pgd', 'cw'].forEach(a => {
     const r = byType[a];
     const cap = a === 'cw' ? 'Cw' : a[0].toUpperCase() + a.slice(1);
     setText(`m${cap}`, r ? (r.robust_accuracy * 100).toFixed(1) + '%' : 'n/a');
     setText(`l${cap}Samples`, r ? r.n_samples_total.toLocaleString() : '--');
     setText(`l${cap}Acc`, r ? (r.robust_accuracy * 100).toFixed(1) + '%' : '--');
-    setText(`l${cap}F1`, r && r.f1 !== undefined ? r.f1.toFixed(2) : '--');
+    setText(`l${cap}Drop`, r ? '-' + (r.accuracy_drop * 100).toFixed(1) + '%' : '--');
+    setText(`l${cap}Risk`, r ? r.risk_score.toFixed(2) : '--');
+    setText(`l${cap}Flipped`, r ? `${r.n_samples_flipped}/${r.n_samples_total}` : '--');
     setStatus(`l${cap}Status`, r ? 'done' : 'skipped');
+
+    if (r) {
+      const pct = ((r.n_samples_flipped / r.n_samples_total) * 100).toFixed(1);
+      flipRows.push(`<div class="flip-row"><span>${a.toUpperCase()} — ${r.n_samples_flipped} of ${r.n_samples_total} predictions changed (${pct}%)</span><span>net accuracy drop: ${(r.accuracy_drop * 100).toFixed(1)}%</span></div>`);
+    }
 
     if (r && r.safe_values_s3_key) {
       const btn = document.createElement('button');
@@ -119,6 +202,84 @@ function renderReport(data) {
       document.getElementById('safeValueButtons').appendChild(btn);
     }
   });
+
+  document.getElementById('flipSummary').innerHTML =
+    `<p class="page-sub" style="margin-bottom:.5rem">// why the flip count and the accuracy drop can disagree</p>` +
+    flipRows.join('') +
+    `<p class="metric-explain" style="margin-top:.6rem">A prediction can flip either wrong→right or right→wrong. If similar numbers of each happen, they cancel out in the accuracy drop even though a lot of individual predictions genuinely changed — look at "flipped" for the real instability, not just the drop.</p>`;
+
+  renderFlippedSamples(data.flipped_samples || [], data.attack_results.map(r => r.attack_type));
+}
+
+function renderFlippedSamples(flipped, attackTypes) {
+  const section = document.getElementById('flippedSection');
+  if (!flipped.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+
+  currentFlipped = flipped;
+
+  const tabs = document.getElementById('flippedTabs');
+  tabs.innerHTML = attackTypes.map((a, i) =>
+    `<button class="attack-chip mono ${i === 0 ? 'active' : ''}" data-attack="${a}" onclick="selectFlippedTab('${a}', this)">${a.toUpperCase()}</button>`
+  ).join('');
+
+  if (attackTypes.length) renderFlippedTable(attackTypes[0]);
+}
+
+function selectFlippedTab(attackType, btn) {
+  document.querySelectorAll('#flippedTabs .attack-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderFlippedTable(attackType);
+}
+
+function renderFlippedTable(attackType) {
+  const rows = currentFlipped.filter(s => s.attack_type === attackType);
+  const wrap = document.getElementById('flippedTableWrap');
+
+  if (!rows.length) {
+    wrap.innerHTML = `<p class="page-sub">No flipped samples recorded for ${attackType.toUpperCase()}.</p>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <table class="flipped-table mono">
+      <thead>
+        <tr>
+          <th>sample</th>
+          <th>original label</th>
+          <th>clean pred</th>
+          <th>adv pred</th>
+          <th>perturbation (L2)</th>
+          <th>most perturbed features</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(s => `
+          <tr>
+            <td>#${s.sample_index}</td>
+            <td>${s.original_label}</td>
+            <td>${s.clean_prediction}</td>
+            <td><span class="flip-badge flipped">${s.adv_prediction}</span></td>
+            <td>${Number(s.perturbation_l2).toFixed(4)}</td>
+            <td>${(s.most_perturbed_features || []).map(formatFeature).join(', ') || '—'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// most_perturbed_features entries are objects, not strings - shape unconfirmed.
+// Tries common key names first, falls back to raw JSON so nothing silently
+// renders as "[object Object]". Tell me the actual keys and I'll simplify this.
+function formatFeature(f) {
+  if (f === null || f === undefined) return '—';
+  if (typeof f !== 'object') return String(f);
+  const name = f.feature ?? f.feature_name ?? f.name ?? f.column ?? null;
+  const value = f.value ?? f.delta ?? f.magnitude ?? f.perturbation ?? f.score ?? null;
+  if (name !== null && value !== null) return `${name} (${Number(value).toFixed(3)})`;
+  if (name !== null) return String(name);
+  return JSON.stringify(f);
 }
 
 function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }

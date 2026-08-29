@@ -1,15 +1,12 @@
 {% extends "base.html" %}
 {% block title %}History{% endblock %}
 {% block content %}
-
 <div class="page-header">
   <div class="page-tag mono">// history</div>
   <h1 class="page-title">Evaluation history</h1>
   <p class="page-sub">All benchmark jobs you've run.</p>
 </div>
-
 <div id="jobs-container" class="mono">Loading...</div>
-
 <script>
 async function loadHistory() {
   const container = document.getElementById("jobs-container");
@@ -21,7 +18,7 @@ async function loadHistory() {
     }
     const jobs = await resp.json();
     if (jobs.length === 0) {
-      container.innerHTML = "<p class='page-sub'>No evaluation jobs yet. <a href='/test'>Run one →</a></p>";
+      container.innerHTML = "<p class='page-sub'>No evaluation jobs yet. <a href='{{ url_for('pages.app_index') }}'>Run one →</a></p>";
       return;
     }
     container.innerHTML = jobs.map(job => `
@@ -40,19 +37,16 @@ async function loadHistory() {
     container.innerHTML = `<pre class="hist-error">${err.message}</pre>`;
   }
 }
-
 async function toggleDetail(jobId) {
   const detail = document.getElementById("detail-" + jobId);
   if (detail.style.display === "block") { detail.style.display = "none"; return; }
   detail.style.display = "block";
   if (detail.dataset.loaded) return;
   detail.dataset.loaded = "true";
-
   const resp = await fetch("/results/api/job/" + jobId);
   const data = await resp.json();
   if (data.error) { detail.innerHTML = `<p class="hist-error">${data.error}</p>`; return; }
   if (data.job.status !== "done") { detail.innerHTML = `<p>Job is ${data.job.status}.</p>`; return; }
-
   const cards = data.attack_results.map(r => {
     const riskClass = r.risk_score > 60 ? "risk-high" : r.risk_score > 30 ? "risk-medium" : "risk-low";
     return `
@@ -70,11 +64,9 @@ async function toggleDetail(jobId) {
         ${r.safe_values_s3_key ? `<button class="btn btn-ghost" onclick="downloadSafeValues('${jobId}','${r.attack_type}',event)">⬇ Download Safe Values</button>` : ""}
       </div>`;
   }).join("");
-
   detail.innerHTML = `<h3>Attack Results</h3>${cards}
     <a class="btn btn-ghost" href="/results/${jobId}">Open full report →</a>`;
 }
-
 async function downloadSafeValues(jobId, attackType, event) {
   event.stopPropagation();
   const btn = event.target;
@@ -84,7 +76,6 @@ async function downloadSafeValues(jobId, attackType, event) {
   if (data.download_url) { window.open(data.download_url, "_blank"); btn.innerText = "✅ Download started"; }
   else btn.innerText = "❌ " + data.error;
 }
-
 loadHistory();
 </script>
 {% endblock %}

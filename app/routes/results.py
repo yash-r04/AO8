@@ -1,8 +1,12 @@
 # app/routes/results.py
-from flask import Blueprint, jsonify, session, render_template
+import io
+from flask import Blueprint, jsonify, session, render_template, make_response
 from app.db import get_db
 from app.services.auth_helpers import login_required
 from app.services.storage import generate_download_url
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import inch
 import json
 
 results_bp = Blueprint("results", __name__)
@@ -11,7 +15,7 @@ results_bp = Blueprint("results", __name__)
 @login_required
 def history():
     """Render the history page."""
-    return render_template("history.html", user=session["user"])
+    return render_template("history.html", user=session.get("user"))
 
 @results_bp.route("/api/history")
 @login_required
@@ -45,7 +49,6 @@ def api_job_detail(job_id):
     conn = get_db()
     cur = conn.cursor()
 
-    # Verify job belongs to user
     cur.execute("""
         SELECT * FROM evaluation_jobs
         WHERE id = %s AND user_id = %s
@@ -54,7 +57,6 @@ def api_job_detail(job_id):
     if not job:
         return jsonify({"error": "Not found"}), 404
 
-    # Get attack results
     cur.execute("""
         SELECT attack_type, clean_accuracy, robust_accuracy,
                accuracy_drop, risk_score, n_samples_total,
@@ -65,7 +67,6 @@ def api_job_detail(job_id):
     """, (job_id,))
     attack_results = cur.fetchall()
 
-    # Get sample-level flipped rows for each attack
     cur.execute("""
         SELECT s.sample_index, s.original_label, s.clean_prediction,
                s.adv_prediction, s.perturbation_l2, s.most_perturbed_features,
@@ -110,9 +111,93 @@ def download_safe_values(job_id, attack_type):
     url = generate_download_url(result["safe_values_s3_key"], expires_in=300)
     return jsonify({"download_url": url, "expires_in": 300})
 
-@results_bp.route("/results/<job_id>")
+@results_bp.route("/<job_id>/download.pdf")
+@login_required
+def download_pdf(job_id):
+    """
+    Generates a simple PDF report server-side with reportlab.
+    Requires: pip install reportlab
+    """
+    user_id = session["user"]["id"]
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, status, queued_at, completed_at
+        FROM evaluation_jobs WHERE id = %s AND user_id = %s
+    """, (job_id, user_id))
+    job = cur.fetchone()
+    if not job:
+        cur.close()
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+
+    cur.execute("""
+        SELECT attack_type, clean_accuracy, robust_accuracy,
+               accuracy_drop, risk_score, n_samples_total, n_samples_flipped
+        FROM evaluation_results
+        WHERE job_id = %s
+        ORDER BY risk_score DESC
+    """, (job_id,))
+    attack_results = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    width, height = letter
+    y = height - inch
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(inch, y, "AO8 Robustness Report")
+    y -= 0.3 * inch
+
+    c.setFont("Helvetica", 10)
+    c.drawString(inch, y, f"Job ID: {job_id}")
+    y -= 0.2 * inch
+    c.drawString(inch, y, f"Status: {job['status']}")
+    y -= 0.4 * inch
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(inch, y, "Attack Results")
+    y -= 0.28 * inch
+
+    c.setFont("Helvetica", 9)
+    for r in attack_results:
+        line = (
+            f"{r['attack_type'].upper()}  |  "
+            f"clean: {r['clean_accuracy']*100:.1f}%  "
+            f"robust: {r['robust_accuracy']*100:.1f}%  "
+            f"drop: {r['accuracy_drop']*100:.1f}%  "
+            f"risk: {r['risk_score']:.1f}  "
+            f"flipped: {r['n_samples_flipped']}/{r['n_samples_total']}"
+        )
+        c.drawString(inch, y, line)
+        y -= 0.22 * inch
+        if y < inch:
+            c.showPage()
+            y = height - inch
+            c.setFont("Helvetica", 9)
+
+    c.save()
+    buf.seek(0)
+
+    response = make_response(buf.read())
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = f"attachment; filename=ao8_report_{job_id}.pdf"
+    return response
+
+
+@results_bp.route("/<job_id>")
 @login_required
 def view_results(job_id):
+    """
+    Fixed: was "/results/<job_id>", which double-prefixed to
+    /results/results/<job_id> under url_prefix="/results".
+    Also now passes user= explicitly so the navbar's Test/History
+    links don't disappear on this page if the context processor
+    isn't set up yet.
+    """
     user_id = session["user"]["id"]
     conn = get_db()
     cur = conn.cursor()
@@ -125,6 +210,6 @@ def view_results(job_id):
     conn.close()
 
     if not job:
-        return render_template("404.html"), 404  # or abort(404)
+        return render_template("404.html"), 404
 
-    return render_template("results.html", job_id=job_id)
+    return render_template("results.html", job_id=job_id, user=session.get("user"))

@@ -1,124 +1,336 @@
 {% extends "base.html" %}
-{% block title %}Home{% endblock %}
+{% block title %}Adversarial Robustness Testing{% endblock %}
 {% block content %}
 
+<!-- HERO -->
 <section class="hero">
   <div class="hero-copy">
-    <div class="hero-tag mono">v1.0 // white-box adversarial testing</div>
+    <div class="hero-tag mono">// adversarial robustness framework</div>
     <h1 class="hero-title">
-      Break your model<br>
+      Stress-test your<br>
+      ML models<br>
       <span class="accent">before attackers do.</span>
     </h1>
     <p class="hero-sub">
-      AO8 runs FGSM, PGD, and C&W attacks against your security ML model,
-      applies defenses, and gives you a clear robustness report.
+      AO8 simulates real adversarial attacks on your security-critical ML models —
+      intrusion detection, malware classifiers, fraud engines — and tells you
+      exactly where they break, what data caused it, and how to fix it.
     </p>
     <div class="hero-actions">
-      <a href="/upload" class="btn btn-primary">Start benchmarking</a>
-      <a href="#how" class="btn btn-ghost">See how it works</a>
+      {% if user %}
+        <a href="{{ url_for('pages.app_index') }}" class="btn btn-primary btn-lg">Open Dashboard →</a>
+        <a href="{{ url_for('pages.learn') }}" class="btn btn-ghost btn-lg">Learn how it works</a>
+      {% else %}
+        <button class="btn btn-primary btn-lg" onclick="openLoginModal()">Get started free</button>
+        <a href="{{ url_for('pages.learn') }}" class="btn btn-ghost btn-lg">Learn how it works</a>
+      {% endif %}
     </div>
     <div class="hero-stats">
       <div class="stat">
-        <span class="stat-num">3</span>
+        <span class="stat-num">3+</span>
         <span class="stat-label mono">attack types</span>
       </div>
       <div class="stat-divider"></div>
       <div class="stat">
         <span class="stat-num">3</span>
-        <span class="stat-label mono">defense methods</span>
+        <span class="stat-label mono">frameworks</span>
       </div>
       <div class="stat-divider"></div>
       <div class="stat">
-        <span class="stat-num">1</span>
-        <span class="stat-label mono">robustness score</span>
+        <span class="stat-num">0</span>
+        <span class="stat-label mono">cost to start</span>
       </div>
     </div>
   </div>
 
   <div class="hero-panel">
-    <div class="panel-card panel-main">
-      <div class="panel-header">
-        <span class="mono">robustness overview</span>
-        <span class="panel-pill mono">live</span>
+    <div class="panel-card">
+      <div class="panel-header mono">
+        <span>// robustness score</span>
+        <span class="panel-pill">sample report</span>
       </div>
-      <div class="panel-score">87.4%</div>
+      <div class="panel-score-wrap">
+        <svg width="128" height="128" viewBox="0 0 128 128" class="panel-ring">
+          <circle cx="64" cy="64" r="52" fill="none" stroke="var(--border)" stroke-width="10"/>
+          <circle cx="64" cy="64" r="52" fill="none" stroke="var(--attack)" stroke-width="10"
+                  stroke-dasharray="326.7" stroke-dashoffset="90" stroke-linecap="round"
+                  transform="rotate(-90 64 64)"/>
+        </svg>
+        <div class="panel-score-center">
+          <span class="panel-score-tag mono">HIGH RISK</span>
+        </div>
+      </div>
       <div class="panel-meta">
-        <span>attack success</span>
-        <span class="mono">12.6%</span>
+        <span class="mono">clean acc</span>
+        <span class="mono">robust acc</span>
       </div>
       <div class="panel-bars">
-        <div class="panel-bar"><span style="width: 88%"></span></div>
-        <div class="panel-bar"><span style="width: 72%"></span></div>
-        <div class="panel-bar"><span style="width: 64%"></span></div>
+        <div class="panel-bar"><span style="width:92%"></span></div>
+        <div class="panel-bar"><span style="width:38%;background:var(--attack)"></span></div>
+      </div>
+      <div class="panel-footnote mono">
+        Accuracy collapses under attack <span class="accent-attack">▼</span>
       </div>
     </div>
-
     <div class="panel-mini">
       <div>
-        <span class="mono panel-mini-label">model</span>
-        <strong>SecurityNet X</strong>
+        <span class="panel-mini-label mono">Most vulnerable features</span>
+        <span class="panel-mini-value">Ranked by perturbation sensitivity</span>
       </div>
-      <span class="panel-mini-badge mono">safe</span>
+      <span class="panel-mini-badge mono">→</span>
+    </div>
+    <div class="panel-mini">
+      <div>
+        <span class="panel-mini-label mono">Safe values export</span>
+        <span class="panel-mini-value">Inputs that never flipped</span>
+      </div>
+      <span class="panel-mini-badge mono">↓ .npz</span>
     </div>
   </div>
 </section>
 
-<section class="section" id="how">
+<!-- HOW IT WORKS -->
+<section class="section">
   <div class="section-tag mono">// how it works</div>
   <div class="steps">
-    <div class="step" data-step="01">
+    <div class="step">
       <div class="step-num mono">01</div>
-      <h3 class="step-title">Upload your model</h3>
-      <p class="step-desc">Drop in a PyTorch or scikit-learn model with your tabular security dataset. AO8 validates it before touching anything.</p>
+      <div class="step-title">Upload your model</div>
+      <p class="step-desc">Drop your TorchScript (.pt) or ONNX (.onnx) model. AO8 validates it loads correctly before running anything.</p>
     </div>
-    <div class="step-arrow">→</div>
-    <div class="step" data-step="02">
+    <div class="step">
       <div class="step-num mono">02</div>
-      <h3 class="step-title">Run attacks</h3>
-      <p class="step-desc">FGSM, PGD, and C&W generate adversarial samples. Performance is measured after each attack independently.</p>
+      <div class="step-title">Upload your dataset</div>
+      <p class="step-desc">Upload a CSV with numeric features. The last column is treated as the label. AO8 normalises values automatically.</p>
     </div>
-    <div class="step-arrow">→</div>
-    <div class="step" data-step="03">
+    <div class="step">
       <div class="step-num mono">03</div>
-      <h3 class="step-title">Apply defenses</h3>
-      <p class="step-desc">Three defense methods are tested one by one so you see the exact accuracy vs robustness tradeoff for each.</p>
+      <div class="step-title">Choose your attacks</div>
+      <p class="step-desc">Select FGSM, PGD, or C&W. Set the perturbation budget (epsilon). AO8 queues the job and runs it in the background.</p>
     </div>
-    <div class="step-arrow">→</div>
-    <div class="step" data-step="04">
+    <div class="step">
       <div class="step-num mono">04</div>
-      <h3 class="step-title">Get the report</h3>
-      <p class="step-desc">A structured report with plots and a robustness score. Exportable as PDF or JSON.</p>
+      <div class="step-title">Read the report</div>
+      <p class="step-desc">See exactly which samples flipped, which features were exploited, your risk score, and download the safe values.</p>
     </div>
   </div>
 </section>
 
+<!-- FEATURES -->
 <section class="section">
-  <div class="section-tag mono">// what you can test</div>
+  <div class="section-tag mono">// what you get</div>
   <div class="cards">
     <div class="card">
-      <div class="card-icon">⬡</div>
-      <h3 class="card-title">Intrusion detection</h3>
-      <p class="card-desc">Models trained on NSL-KDD, CICIDS2017, UNSW-NB15. Binary or multiclass.</p>
-      <div class="card-tag mono">IDS / IPS</div>
+      <div class="card-icon">⚡</div>
+      <div class="card-title">Multiple attack types</div>
+      <p class="card-desc">FGSM for fast one-step attacks, PGD for iterative strong attacks, C&W for minimum-distortion attacks. Each tells you something different about your model.</p>
+      <span class="card-tag mono">FGSM · PGD · C&W</span>
     </div>
     <div class="card">
-      <div class="card-icon">⬡</div>
-      <h3 class="card-title">Malware classification</h3>
-      <p class="card-desc">PE header features, API call sequences, byte n-gram models.</p>
-      <div class="card-tag mono">Security ML</div>
+      <div class="card-icon">🔍</div>
+      <div class="card-title">Per-sample analysis</div>
+      <p class="card-desc">See exactly which samples were flipped, which features were perturbed the most, and what the minimum perturbation needed was. Not just aggregate metrics.</p>
+      <span class="card-tag mono">sample-level</span>
     </div>
     <div class="card">
-      <div class="card-icon">⬡</div>
-      <h3 class="card-title">Network traffic analysis</h3>
-      <p class="card-desc">Flow-based classifiers using packet-level and statistical features.</p>
-      <div class="card-tag mono">NetSec</div>
+      <div class="card-icon">⬇</div>
+      <div class="card-title">Safe values export</div>
+      <p class="card-desc">Download the subset of your data that the model handles robustly — inputs that were never successfully fooled. Use them to build a hardened test set.</p>
+      <span class="card-tag mono">.npz export</span>
     </div>
   </div>
 </section>
 
-<section class="section cta-section">
-  <h2 class="cta-title">Ready to stress-test your model?</h2>
-  <a href="/upload" class="btn btn-primary btn-lg">Upload model →</a>
+<!-- LEARN BRIEF -->
+<section class="section">
+  <div class="section-tag mono">// understand the attacks</div>
+  <div class="learn-brief-grid">
+    <div class="card">
+      <div class="attack-eyebrow mono">FAST GRADIENT SIGN METHOD</div>
+      <div class="card-title">FGSM</div>
+      <p class="card-desc">The simplest attack. Takes one step in the direction that maximises the model's loss. Very fast, but not the strongest. Good for a quick sanity check.</p>
+      <a href="{{ url_for('pages.learn') }}#fgsm" class="card-tag mono" style="text-decoration:none">Learn more →</a>
+    </div>
+    <div class="card">
+      <div class="attack-eyebrow mono">PROJECTED GRADIENT DESCENT</div>
+      <div class="card-title">PGD</div>
+      <p class="card-desc">Runs FGSM iteratively, projecting back into an epsilon-ball after each step. The standard benchmark attack. If your model survives PGD, it's meaningfully robust.</p>
+      <a href="{{ url_for('pages.learn') }}#pgd" class="card-tag mono" style="text-decoration:none">Learn more →</a>
+    </div>
+  </div>
+  <a href="{{ url_for('pages.learn') }}" class="btn btn-ghost">Read the full guide →</a>
 </section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2 class="cta-title">Ready to test your model?</h2>
+  {% if user %}
+    <a href="{{ url_for('pages.app_index') }}" class="btn btn-primary btn-lg">Open Dashboard →</a>
+  {% else %}
+    <button class="btn btn-primary btn-lg" onclick="openLoginModal()">Sign in with Google or GitHub</button>
+  {% endif %}
+</section>
+
+<style>
+  .learn-brief-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 760px) {
+    .learn-brief-grid { grid-template-columns: 1fr; }
+  }
+  .attack-eyebrow {
+    font-size: 0.76rem;
+    color: var(--attack);
+    letter-spacing: 0.06em;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Hero panel polish */
+  .panel-score-wrap {
+    position: relative;
+    width: 128px;
+    height: 128px;
+    margin: 0.25rem 0 1.25rem;
+  }
+  .panel-ring circle:last-child { transition: stroke-dashoffset 1s ease; }
+  .panel-score-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .panel-score-tag {
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    color: var(--attack);
+    padding: 0.3rem 0.7rem;
+    border: 1px solid rgba(255, 75, 110, 0.35);
+    border-radius: 999px;
+    background: rgba(255, 75, 110, 0.08);
+    white-space: nowrap;
+  }
+  .panel-meta {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text3);
+    font-size: 0.76rem;
+    margin-bottom: 0.5rem;
+  }
+  .panel-bars { gap: 0.6rem; }
+  .panel-bar span { background: var(--accent); }
+  .panel-footnote {
+    margin-top: 1rem;
+    font-size: 0.78rem;
+    color: var(--text3);
+  }
+  .accent-attack { color: var(--attack); }
+  .panel-mini-value {
+    font-size: 0.85rem;
+    color: var(--text2);
+  }
+
+  /* ---------- Snap scrolling + reveal polish ---------- */
+  html {
+    scroll-snap-type: y proximity;
+  }
+  .hero,
+  .section,
+  .cta-section {
+    scroll-snap-align: start;
+  }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s cubic-bezier(.16,.84,.44,1), transform 0.7s cubic-bezier(.16,.84,.44,1);
+  }
+  .reveal.in-view {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .reveal-stagger.in-view .step,
+  .reveal-stagger.in-view .card,
+  .reveal-stagger.in-view .learn-brief-grid .card {
+    animation: staggerIn 0.6s cubic-bezier(.16,.84,.44,1) both;
+  }
+  .reveal-stagger .step:nth-child(1), .reveal-stagger .card:nth-child(1) { animation-delay: 0.02s; }
+  .reveal-stagger .step:nth-child(2), .reveal-stagger .card:nth-child(2) { animation-delay: 0.10s; }
+  .reveal-stagger .step:nth-child(3), .reveal-stagger .card:nth-child(3) { animation-delay: 0.18s; }
+  .reveal-stagger .step:nth-child(4), .reveal-stagger .card:nth-child(4) { animation-delay: 0.26s; }
+  @keyframes staggerIn {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* subtle lift on interactive cards/steps beyond the base hover already defined */
+  .step, .card { will-change: transform; }
+
+  /* smoother CTA entrance */
+  .cta-section { scroll-margin-top: 2rem; }
+
+  /* scroll progress bar */
+  #scrollProgress {
+    position: fixed;
+    top: 0; left: 0;
+    height: 3px;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    z-index: 500;
+    transition: width 0.1s ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; scroll-snap-type: none; }
+    .reveal, .reveal-stagger .step, .reveal-stagger .card { opacity: 1 !important; transform: none !important; animation: none !important; }
+  }
+</style>
+
+<div id="scrollProgress"></div>
+
+<script>
+(function() {
+  // scroll progress bar
+  const bar = document.getElementById('scrollProgress');
+  function updateBar() {
+    const h = document.documentElement;
+    const scrolled = (h.scrollTop) / (h.scrollHeight - h.clientHeight) * 100;
+    bar.style.width = (scrolled || 0) + '%';
+  }
+  document.addEventListener('scroll', updateBar, { passive: true });
+  updateBar();
+
+  // tag sections for reveal-on-scroll
+  const targets = document.querySelectorAll('.hero-copy, .hero-panel, .section, .cta-section');
+  targets.forEach(el => el.classList.add('reveal'));
+
+  // stagger children of grids
+  document.querySelectorAll('.steps, .cards, .learn-brief-grid').forEach(el => el.classList.add('reveal-stagger'));
+
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in-view');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -60px 0px' });
+
+  document.querySelectorAll('.reveal, .reveal-stagger').forEach(el => io.observe(el));
+
+  // animate the hero score ring in from 0
+  const ring = document.querySelector('.panel-ring circle:last-child');
+  if (ring) {
+    const target = ring.getAttribute('stroke-dashoffset');
+    ring.setAttribute('stroke-dashoffset', '326.7');
+    requestAnimationFrame(() => {
+      setTimeout(() => { ring.style.transition = 'stroke-dashoffset 1.4s cubic-bezier(.16,.84,.44,1)'; ring.setAttribute('stroke-dashoffset', target); }, 300);
+    });
+  }
+})();
+</script>
 
 {% endblock %}

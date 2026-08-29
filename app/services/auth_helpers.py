@@ -47,6 +47,6 @@ def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if "user" not in session:
-            return redirect(url_for("auth.login_page"))
+            return redirect(url_for("home"))
         return f(*args, **kwargs)
     return decorated

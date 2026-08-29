@@ -2,21 +2,13 @@
 import requests
 from flask import (
     Blueprint, redirect, request,
-    session, url_for, jsonify, render_template
+    session, url_for, jsonify
 )
 from app.config import Config
 from app.services.auth_helpers import get_or_create_user
 import urllib.parse
 
 auth_bp = Blueprint("auth", __name__)
-
-
-# ── LOGIN PAGE ────────────────────────────────────────────────────
-
-@auth_bp.route("/login")
-def login_page():
-    """Simple page with two buttons — Google and GitHub."""
-    return render_template("login.html")
 
 
 # ── GOOGLE via COGNITO ────────────────────────────────────────────
@@ -89,7 +81,7 @@ def google_callback():
         "provider": "google",
     }
 
-    return redirect(url_for("dashboard"))  # change to your actual dashboard route
+    return redirect(url_for("pages.app_index"))
 
 
 # ── GITHUB DIRECT OAUTH ───────────────────────────────────────────
@@ -161,7 +153,7 @@ def github_callback():
         "provider": "github",
     }
 
-    return redirect(url_for("dashboard"))  # change to your actual dashboard route
+    return redirect(url_for("pages.app_index"))
 
 
 # ── LOGOUT ────────────────────────────────────────────────────────
@@ -169,7 +161,7 @@ def github_callback():
 @auth_bp.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("auth.login_page"))
+    return redirect(url_for("home"))
 
 
 # ── CURRENT USER (useful for your frontend JS) ────────────────────

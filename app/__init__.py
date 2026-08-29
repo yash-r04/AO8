@@ -43,5 +43,8 @@ def create_app():
     app.register_blueprint(models_bp,   url_prefix="/models")
     app.register_blueprint(evaluate_bp, url_prefix="/evaluate")
     app.register_blueprint(results_bp,  url_prefix="/results")
+    from app.routes.pages import pages_bp
+
+    app.register_blueprint(pages_bp)
 
     return app

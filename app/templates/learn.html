@@ -1,91 +1,518 @@
 {% extends "base.html" %}
-{% block title %}Learn{% endblock %}
+{% block title %}Learn — Adversarial Attacks{% endblock %}
 {% block content %}
 
-<div class="page-header">
-  <div class="page-tag mono">// primer</div>
-  <h1 class="page-title">Adversarial ML, in five minutes</h1>
-  <p class="page-sub">Everything you need to understand the attacks AO8 runs and how to read your report.</p>
-</div>
-
 <section class="section">
-  <div class="faq-list">
+  <div class="section-tag mono">// the basics</div>
+  <h1 class="hero-title" style="font-size:2rem">Understanding adversarial attacks</h1>
+  <p class="hero-sub">
+    An adversarial attack takes an input your model already classifies correctly
+    and nudges it — often by an amount too small to notice — until the model
+    gets it wrong. AO8 runs three of the most common attacks so you can see
+    exactly how fragile your model is. Drag the controls below to build intuition
+    before you read the numbers on your own report.
+  </p>
+</section>
 
-    <details class="faq-item" open>
-      <summary class="faq-q">White-box vs. black-box attacks</summary>
-      <div class="faq-a">
-        <p><strong>White-box</strong> attacks assume the attacker has full access to the model —
-        architecture, weights, gradients. They craft perturbations using the model's own gradient,
-        which makes them the strongest possible test of robustness. AO8 runs white-box attacks because
-        it has your uploaded model directly: if you're not robust to white-box attacks, you're
-        definitely not robust to weaker black-box ones.</p>
-        <p><strong>Black-box</strong> attacks assume no internal access — the attacker can only query
-        the model and see outputs (or not even that). They rely on transferability or querying/estimating
-        gradients. They're a *lower bound* on how much damage a real attacker without insider access could do.</p>
+<!-- ============ EPSILON EXPLAINER ============ -->
+<section class="section" id="epsilon">
+  <div class="card">
+    <div class="attack-eyebrow mono">THE BUDGET</div>
+    <h2 class="card-title">Epsilon (ε)</h2>
+    <p class="card-desc">
+      Epsilon is the leash on an attack. It caps how far any single input is allowed
+      to move before the attacker has to stop — the maximum size of the perturbation,
+      measured in the same units as your input features. A tiny epsilon means the
+      attacker can only nudge a point slightly; a large epsilon lets them drag it
+      much further from where it started.
+    </p>
+    <p class="card-desc">
+      FGSM and PGD both work inside an epsilon budget you choose. C&amp;W is different —
+      instead of being told how far it's allowed to move, it searches for the
+      <em>smallest</em> distortion that still fools the model, so the "perturbation (L2)"
+      column in your report is really C&amp;W discovering its own effective epsilon per sample.
+    </p>
+
+    <div class="epsilon-demo">
+      <div class="epsilon-demo-canvas-wrap">
+        <svg id="epsilonSvg" viewBox="0 0 480 320" class="epsilon-svg"></svg>
       </div>
-    </details>
-
-    <details class="faq-item">
-      <summary class="faq-q">FGSM — Fast Gradient Sign Method</summary>
-      <div class="faq-a">
-        <p>The simplest and fastest attack. It takes one step in the direction that increases the
-        model's loss the most: <code class="mono">x_adv = x + ε · sign(∇ₓ loss(x, y))</code>.
-        One gradient computation, done. Great as a cheap sanity check; usually the easiest attack for
-        a model to survive.</p>
+      <div class="epsilon-controls">
+        <label class="mono epsilon-label" for="epsilonSlider">ε = <span id="epsilonVal">0.15</span></label>
+        <input type="range" id="epsilonSlider" min="0" max="0.4" step="0.01" value="0.15" />
+        <p class="epsilon-hint mono dim">Drag the point, or drag the slider. The shaded disc is everywhere the attacker is allowed to push it. Points that cross the dashed boundary have flipped class.</p>
+        <div class="epsilon-readout mono" id="epsilonReadout"></div>
       </div>
-    </details>
-
-    <details class="faq-item">
-      <summary class="faq-q">PGD — Projected Gradient Descent</summary>
-      <div class="faq-a">
-        <p>FGSM's stronger sibling. Instead of one big step, PGD takes many small gradient steps and
-        "projects" the result back inside the allowed ε-ball after each step, so the perturbation never
-        exceeds the budget. Considered the standard benchmark for empirical robustness — if a model
-        survives PGD at a given ε, that's a meaningful signal.</p>
-      </div>
-    </details>
-
-    <details class="faq-item">
-      <summary class="faq-q">C&amp;W — Carlini &amp; Wagner</summary>
-      <div class="faq-a">
-        <p>An optimization-based attack that searches directly for the smallest perturbation that
-        flips the prediction, rather than working within a fixed ε. It's slower (often minutes instead
-        of seconds) but tends to find the true worst case, which is why AO8 flags it as the "may take a
-        while" option.</p>
-      </div>
-    </details>
-
-    <details class="faq-item">
-      <summary class="faq-q">What does epsilon (ε) mean?</summary>
-      <div class="faq-a">
-        <p>Epsilon is the attack's perturbation budget — the maximum amount any input feature is allowed
-        to change, usually measured in L∞ or L2 norm. A small ε (e.g. 0.01) means "barely visible"
-        perturbations; a larger ε (e.g. 0.3) means the attacker is allowed to change inputs more
-        aggressively. Robustness at low ε is a much higher bar to fail than robustness at high ε — always
-        read accuracy drop next to the ε it was measured at, not in isolation.</p>
-      </div>
-    </details>
-
-    <details class="faq-item">
-      <summary class="faq-q">How to read your AO8 report</summary>
-      <div class="faq-a">
-        <ul class="faq-list-plain">
-          <li><strong>Robustness score</strong> — a single 0–100 summary; above ~75 is "robust", 50–75
-            is "moderate risk", below 50 is "high risk".</li>
-          <li><strong>Clean accuracy</strong> — how the model performs with no attack, your baseline.</li>
-          <li><strong>Per-attack accuracy / accuracy drop</strong> — accuracy under that attack, and how
-            far it fell from clean. A big drop under FGSM (the weakest attack) is a bad sign; a big drop
-            only under C&amp;W is more expected.</li>
-          <li><strong>Flipped samples</strong> — individual inputs the attack successfully fooled, with
-            the features it perturbed most — useful for spotting which input features your model is
-            over-reliant on.</li>
-          <li><strong>Defense comparison bars</strong> — clean vs. robust accuracy before and after each
-            defense, so you can see the accuracy/robustness trade-off each one costs you.</li>
-        </ul>
-      </div>
-    </details>
-
+    </div>
   </div>
 </section>
+
+<!-- ============ FGSM ============ -->
+<section class="section" id="fgsm">
+  <div class="card">
+    <div class="attack-eyebrow mono">FAST GRADIENT SIGN METHOD</div>
+    <h2 class="card-title">FGSM</h2>
+    <p class="card-desc">
+      FGSM takes a single step in the direction that increases the model's
+      loss the fastest, scaled by epsilon. It's cheap to compute — one gradient
+      pass — which makes it a fast sanity check, but it's also the weakest of the
+      three attacks AO8 runs. A model that survives FGSM hasn't proven much; a
+      model that fails FGSM is definitely fragile.
+    </p>
+    <div class="attack-demo">
+      <svg id="fgsmSvg" viewBox="0 0 480 300" class="attack-svg"></svg>
+      <div class="attack-demo-controls">
+        <label class="mono">ε <span id="fgsmEpsVal">0.15</span></label>
+        <input type="range" id="fgsmEps" min="0" max="0.4" step="0.01" value="0.15" />
+        <button class="btn btn-ghost mono" id="fgsmStep">Take the step →</button>
+        <p class="attack-note mono dim">FGSM only ever takes <strong>one</strong> step, straight to the edge of the epsilon budget, in the single worst direction it can compute.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PGD ============ -->
+<section class="section" id="pgd">
+  <div class="card">
+    <div class="attack-eyebrow mono">PROJECTED GRADIENT DESCENT</div>
+    <h2 class="card-title">PGD</h2>
+    <p class="card-desc">
+      PGD repeats the FGSM step multiple times, projecting the result back
+      into the allowed epsilon-ball after each step so the perturbation never
+      grows too large. It's the standard benchmark in adversarial ML research —
+      if your model holds up under PGD, that's a meaningful robustness signal.
+    </p>
+    <div class="attack-demo">
+      <svg id="pgdSvg" viewBox="0 0 480 300" class="attack-svg"></svg>
+      <div class="attack-demo-controls">
+        <label class="mono">ε <span id="pgdEpsVal">0.15</span></label>
+        <input type="range" id="pgdEps" min="0" max="0.4" step="0.01" value="0.15" />
+        <label class="mono">steps <span id="pgdStepsVal">6</span></label>
+        <input type="range" id="pgdSteps" min="1" max="12" step="1" value="6" />
+        <button class="btn btn-ghost mono" id="pgdRun">Run PGD</button>
+        <p class="attack-note mono dim">Each small step is projected back inside the disc, so PGD explores the whole budget instead of committing to one direction — usually finding a better flip than FGSM at the same ε.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C&W ============ -->
+<section class="section" id="cw">
+  <div class="card">
+    <div class="attack-eyebrow mono">CARLINI &amp; WAGNER</div>
+    <h2 class="card-title">C&amp;W</h2>
+    <p class="card-desc">
+      C&amp;W searches for the smallest possible perturbation that still flips
+      the model's prediction, rather than working within a fixed epsilon budget.
+      It's slower to run than FGSM or PGD, but it tells you the true minimum
+      distortion an attacker would need — useful for understanding worst-case
+      exposure.
+    </p>
+    <div class="attack-demo">
+      <svg id="cwSvg" viewBox="0 0 480 300" class="attack-svg"></svg>
+      <div class="attack-demo-controls">
+        <button class="btn btn-ghost mono" id="cwRun">Search for minimum ε</button>
+        <p class="attack-note mono dim">Instead of a fixed budget, C&amp;W tightens the disc step by step until it finds the smallest one that still crosses the boundary — that radius is the number you see in "perturbation (L2)".</p>
+        <div class="attack-note mono" id="cwReadout"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SAFE VALUES ============ -->
+<section class="section" id="safe-values">
+  <div class="card">
+    <div class="attack-eyebrow mono">AFTER THE REPORT</div>
+    <h2 class="card-title">Using safe values</h2>
+    <p class="card-desc">
+      When an attack finds a version of an input that flips your model's
+      prediction, AO8 also records a <strong>safe value</strong> for that
+      sample: a version of the same input, at the same perturbation
+      distance, that the model still classifies correctly. Comparing the
+      two shows you exactly which features an attacker leaned on, and which
+      version of the input your model can be trusted with.
+    </p>
+
+    <div class="safevalues-steps">
+      <div class="sv-step">
+        <div class="sv-step-num mono">01</div>
+        <div>
+          <h3 class="sv-step-title">Download the set for an attack</h3>
+          <p class="sv-step-desc">On your results page, each attack with flipped samples gets a "Download safe values" button. This gives you a file matched row-for-row with the flipped-samples table, so you can line up original → adversarial → safe for the same sample index.</p>
+        </div>
+      </div>
+      <div class="sv-step">
+        <div class="sv-step-num mono">02</div>
+        <div>
+          <h3 class="sv-step-title">Diff against the flipped input</h3>
+          <p class="sv-step-desc">For any row, subtract the safe value from the adversarial one. The features with the largest difference are the ones the attack actually exploited — cross-reference against "most perturbed features" in the same row.</p>
+        </div>
+      </div>
+      <div class="sv-step">
+        <div class="sv-step-num mono">03</div>
+        <div>
+          <h3 class="sv-step-title">Feed it back into training</h3>
+          <p class="sv-step-desc">Safe values are valid, correctly-labeled inputs near the decision boundary. Adding them to your training set (or using them for adversarial fine-tuning) tends to push the boundary away from your real data without needing new labels.</p>
+        </div>
+      </div>
+      <div class="sv-step">
+        <div class="sv-step-num mono">04</div>
+        <div>
+          <h3 class="sv-step-title">Re-run and compare</h3>
+          <p class="sv-step-desc">After retraining, run the same attack again. A shrinking gap between clean and robust accuracy — or a rising minimum perturbation for C&amp;W — is the signal that the safe values actually helped.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section cta-section">
+  <h2 class="cta-title">See how your model holds up</h2>
+  {% if user %}
+    <a href="{{ url_for('pages.app_index') }}" class="btn btn-primary btn-lg">Run a test →</a>
+  {% else %}
+    <button class="btn btn-primary btn-lg" onclick="openLoginModal()">Sign in to get started</button>
+  {% endif %}
+</section>
+
+<style>
+  .attack-eyebrow { font-size: 0.72rem; color: var(--attack, #f55); letter-spacing: 0.06em; margin-bottom: 0.5rem; }
+
+  .epsilon-demo, .attack-demo {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+    margin-top: 1.25rem;
+    border-top: 1px solid var(--border, #333);
+    padding-top: 1.25rem;
+  }
+  @media (max-width: 760px) {
+    .epsilon-demo, .attack-demo { grid-template-columns: 1fr; }
+  }
+
+  .epsilon-svg, .attack-svg {
+    width: 100%;
+    height: auto;
+    background: var(--bg-alt, #0d0d0d);
+    border: 1px solid var(--border, #333);
+    border-radius: 10px;
+    touch-action: none;
+  }
+
+  .epsilon-controls, .attack-demo-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .epsilon-label { font-size: 0.85rem; }
+  .epsilon-hint, .attack-note { font-size: 0.72rem; line-height: 1.45; color: var(--text3, #888); }
+  .epsilon-readout, .attack-note#cwReadout { font-size: 0.78rem; color: var(--text, #eee); min-height: 1.2em; }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border, #333);
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent, #6cf);
+    cursor: pointer;
+    border: 2px solid var(--bg, #0a0a0a);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent, #6cf);
+    cursor: pointer;
+    border: 2px solid var(--bg, #0a0a0a);
+  }
+
+  .safevalues-steps { display: grid; gap: 1.1rem; margin-top: 1.25rem; }
+  .sv-step { display: grid; grid-template-columns: auto 1fr; gap: 1rem; align-items: start; border-top: 1px solid var(--border, #333); padding-top: 1.1rem; }
+  .sv-step:first-child { border-top: none; padding-top: 0; }
+  .sv-step-num { color: var(--accent, #6cf); font-size: 0.85rem; padding-top: 0.15rem; }
+  .sv-step-title { font-size: 0.95rem; margin: 0 0 0.3rem; }
+  .sv-step-desc { font-size: 0.85rem; color: var(--text3, #aaa); line-height: 1.5; margin: 0; }
+</style>
+
+<script>
+/* ---------------------------------------------------------------------
+   Small self-contained SVG "toy model" used purely to build intuition.
+   None of this touches real model data — it's a 2D stand-in so people
+   can drag points around and see what "epsilon", "step", and "minimum
+   perturbation that flips the label" actually mean geometrically.
+   ------------------------------------------------------------------- */
+const NS = "http://www.w3.org/2000/svg";
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+// A simple curved decision boundary shared by all four demos, scaled per-canvas.
+function boundaryY(x, w, h) {
+  // gentle S-curve across the canvas
+  const t = x / w;
+  return h * 0.55 + Math.sin(t * Math.PI * 1.3) * h * 0.16 - (t - 0.5) * h * 0.25;
+}
+
+function drawBoundary(svg, w, h, color) {
+  let d = `M 0 ${boundaryY(0, w, h).toFixed(1)}`;
+  for (let x = 0; x <= w; x += 8) d += ` L ${x} ${boundaryY(x, w, h).toFixed(1)}`;
+  svg.appendChild(svgEl('path', { d, stroke: color || 'var(--border, #555)', 'stroke-width': 2, fill: 'none', 'stroke-dasharray': '6 5' }));
+}
+
+function classOf(x, y, w, h) { return y > boundaryY(x, w, h) ? 'A' : 'B'; }
+function classColor(cls) { return cls === 'A' ? '#6cf' : '#f96'; }
+
+/* ---------------- Epsilon demo (draggable point) ---------------- */
+(function epsilonDemo() {
+  const svg = document.getElementById('epsilonSvg');
+  const slider = document.getElementById('epsilonSlider');
+  const epsVal = document.getElementById('epsilonVal');
+  const readout = document.getElementById('epsilonReadout');
+  const W = 480, H = 320, SCALE = 260; // eps(0..0.4) -> pixel radius via SCALE
+
+  let point = { x: 160, y: 120 };
+  let dragging = false;
+
+  function render() {
+    svg.innerHTML = '';
+    drawBoundary(svg, W, H);
+
+    const eps = parseFloat(slider.value);
+    const r = eps * SCALE;
+    const startCls = classOf(point.x, point.y, W, H);
+
+    // reachable disc
+    svg.appendChild(svgEl('circle', { cx: point.x, cy: point.y, r, fill: 'var(--accent, #6cf)', 'fill-opacity': 0.12, stroke: 'var(--accent, #6cf)', 'stroke-width': 1.2, 'stroke-dasharray': '3 3' }));
+
+    // does the disc cross the boundary anywhere?
+    let crosses = false;
+    for (let a = 0; a < 360; a += 10) {
+      const rad = a * Math.PI / 180;
+      const px = point.x + Math.cos(rad) * r, py = point.y + Math.sin(rad) * r;
+      if (classOf(px, py, W, H) !== startCls) { crosses = true; break; }
+    }
+
+    svg.appendChild(svgEl('circle', { cx: point.x, cy: point.y, r: 7, fill: classColor(startCls), stroke: '#000', 'stroke-width': 1, style: 'cursor:grab' }));
+
+    readout.textContent = crosses
+      ? `At ε = ${eps.toFixed(2)}, this point CAN be pushed across the boundary — the model's prediction is not guaranteed to hold.`
+      : `At ε = ${eps.toFixed(2)}, every point reachable within budget stays on the same side — locally robust here.`;
+    readout.style.color = crosses ? '#f77' : '#7d7';
+  }
+
+  svg.addEventListener('pointerdown', (e) => {
+    const pt = toLocal(svg, e, W, H);
+    if (Math.hypot(pt.x - point.x, pt.y - point.y) < 20) { dragging = true; }
+  });
+  svg.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    point = toLocal(svg, e, W, H);
+    point.x = Math.max(10, Math.min(W - 10, point.x));
+    point.y = Math.max(10, Math.min(H - 10, point.y));
+    render();
+  });
+  window.addEventListener('pointerup', () => dragging = false);
+  slider.addEventListener('input', () => { epsVal.textContent = parseFloat(slider.value).toFixed(2); render(); });
+
+  render();
+})();
+
+function toLocal(svg, evt, W, H) {
+  const rect = svg.getBoundingClientRect();
+  const x = (evt.clientX - rect.left) / rect.width * W;
+  const y = (evt.clientY - rect.top) / rect.height * H;
+  return { x, y };
+}
+
+/* ---------------- FGSM demo (single step) ---------------- */
+(function fgsmDemo() {
+  const svg = document.getElementById('fgsmSvg');
+  const epsSlider = document.getElementById('fgsmEps');
+  const epsVal = document.getElementById('fgsmEpsVal');
+  const stepBtn = document.getElementById('fgsmStep');
+  const W = 480, H = 300, SCALE = 260;
+
+  const origin = { x: 150, y: 90 };
+  let stepped = false;
+
+  function bestDirection(x, y, eps) {
+    // move toward boundary: sample directions, pick the one landing deepest on other side
+    const r = eps * SCALE;
+    let best = null, bestScore = -Infinity;
+    for (let a = 0; a < 360; a += 5) {
+      const rad = a * Math.PI / 180;
+      const px = x + Math.cos(rad) * r, py = y + Math.sin(rad) * r;
+      const score = py - boundaryY(px, W, H); // how far past the boundary
+      if (score > bestScore) { bestScore = score; best = { x: px, y: py }; }
+    }
+    return best;
+  }
+
+  function render() {
+    svg.innerHTML = '';
+    drawBoundary(svg, W, H);
+    const eps = parseFloat(epsSlider.value);
+    const r = eps * SCALE;
+    const cls = classOf(origin.x, origin.y, W, H);
+
+    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r, fill: 'none', stroke: 'var(--border, #555)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
+    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 6, fill: classColor(cls), stroke: '#000' }));
+
+    if (stepped) {
+      const target = bestDirection(origin.x, origin.y, eps);
+      svg.appendChild(svgEl('line', { x1: origin.x, y1: origin.y, x2: target.x, y2: target.y, stroke: '#f55', 'stroke-width': 2, 'marker-end': 'url(#arrowFgsm)' }));
+      const newCls = classOf(target.x, target.y, W, H);
+      svg.appendChild(svgEl('circle', { cx: target.x, cy: target.y, r: 6, fill: classColor(newCls), stroke: newCls !== cls ? '#f00' : '#000', 'stroke-width': newCls !== cls ? 2 : 1 }));
+    }
+
+    const defs = svgEl('defs', {});
+    const marker = svgEl('marker', { id: 'arrowFgsm', markerWidth: 8, markerHeight: 8, refX: 6, refY: 4, orient: 'auto' });
+    marker.appendChild(svgEl('path', { d: 'M0,0 L8,4 L0,8 Z', fill: '#f55' }));
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+  }
+
+  epsSlider.addEventListener('input', () => { epsVal.textContent = parseFloat(epsSlider.value).toFixed(2); render(); });
+  stepBtn.addEventListener('click', () => { stepped = !stepped; stepBtn.textContent = stepped ? '↺ Reset' : 'Take the step →'; render(); });
+  render();
+})();
+
+/* ---------------- PGD demo (multi-step, projected) ---------------- */
+(function pgdDemo() {
+  const svg = document.getElementById('pgdSvg');
+  const epsSlider = document.getElementById('pgdEps');
+  const epsVal = document.getElementById('pgdEpsVal');
+  const stepsSlider = document.getElementById('pgdSteps');
+  const stepsVal = document.getElementById('pgdStepsVal');
+  const runBtn = document.getElementById('pgdRun');
+  const W = 480, H = 300, SCALE = 260;
+  const origin = { x: 140, y: 80 };
+  let path = null;
+
+  function runPGD(eps, steps) {
+    const r = eps * SCALE;
+    let cur = { x: origin.x, y: origin.y };
+    const pts = [{ ...cur }];
+    const stepSize = (r * 1.6) / steps;
+    for (let i = 0; i < steps; i++) {
+      // local gradient step: move toward increasing y-boundary distance, with a little noise
+      const dx = (Math.random() - 0.4) * stepSize;
+      let dy = stepSize;
+      let nx = cur.x + dx, ny = cur.y + dy;
+      // project back into epsilon ball around origin
+      const dist = Math.hypot(nx - origin.x, ny - origin.y);
+      if (dist > r) {
+        const scale = r / dist;
+        nx = origin.x + (nx - origin.x) * scale;
+        ny = origin.y + (ny - origin.y) * scale;
+      }
+      cur = { x: nx, y: ny };
+      pts.push({ ...cur });
+    }
+    return pts;
+  }
+
+  function render() {
+    svg.innerHTML = '';
+    drawBoundary(svg, W, H);
+    const eps = parseFloat(epsSlider.value);
+    const r = eps * SCALE;
+    const cls = classOf(origin.x, origin.y, W, H);
+    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r, fill: 'none', stroke: 'var(--border, #555)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
+    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 6, fill: classColor(cls), stroke: '#000' }));
+
+    if (path) {
+      let d = `M ${path[0].x} ${path[0].y}`;
+      path.slice(1).forEach(p => d += ` L ${p.x} ${p.y}`);
+      svg.appendChild(svgEl('path', { d, fill: 'none', stroke: '#fb5', 'stroke-width': 2 }));
+      path.forEach((p, i) => {
+        if (i === 0) return;
+        svg.appendChild(svgEl('circle', { cx: p.x, cy: p.y, r: 3, fill: '#fb5' }));
+      });
+      const final = path[path.length - 1];
+      const newCls = classOf(final.x, final.y, W, H);
+      svg.appendChild(svgEl('circle', { cx: final.x, cy: final.y, r: 6, fill: classColor(newCls), stroke: newCls !== cls ? '#f00' : '#000', 'stroke-width': newCls !== cls ? 2 : 1 }));
+    }
+  }
+
+  epsSlider.addEventListener('input', () => { epsVal.textContent = parseFloat(epsSlider.value).toFixed(2); path = null; render(); });
+  stepsSlider.addEventListener('input', () => { stepsVal.textContent = stepsSlider.value; });
+  runBtn.addEventListener('click', () => {
+    path = runPGD(parseFloat(epsSlider.value), parseInt(stepsSlider.value, 10));
+    render();
+  });
+  render();
+})();
+
+/* ---------------- C&W demo (shrinking-radius search) ---------------- */
+(function cwDemo() {
+  const svg = document.getElementById('cwSvg');
+  const runBtn = document.getElementById('cwRun');
+  const readout = document.getElementById('cwReadout');
+  const W = 480, H = 300, SCALE = 260;
+  const origin = { x: 140, y: 70 };
+  let foundR = null;
+  let animId = null;
+
+  function crossesAtRadius(r) {
+    const cls = classOf(origin.x, origin.y, W, H);
+    for (let a = 0; a < 360; a += 4) {
+      const rad = a * Math.PI / 180;
+      const px = origin.x + Math.cos(rad) * r, py = origin.y + Math.sin(rad) * r;
+      if (classOf(px, py, W, H) !== cls) return true;
+    }
+    return false;
+  }
+
+  function minRadius() {
+    let lo = 0, hi = 200;
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2;
+      if (crossesAtRadius(mid)) hi = mid; else lo = mid;
+    }
+    return hi;
+  }
+
+  function render(rShown) {
+    svg.innerHTML = '';
+    drawBoundary(svg, W, H);
+    const cls = classOf(origin.x, origin.y, W, H);
+    if (rShown != null) {
+      svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: rShown, fill: 'none', stroke: '#c8f', 'stroke-width': 1.4, 'stroke-dasharray': rShown === foundR ? '0' : '3 3' }));
+    }
+    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 6, fill: classColor(cls), stroke: '#000' }));
+  }
+
+  runBtn.addEventListener('click', () => {
+    if (animId) cancelAnimationFrame(animId);
+    const target = minRadius();
+    foundR = target;
+    let shown = 0;
+    readout.textContent = 'searching...';
+    function step() {
+      shown += (target - shown) * 0.15 + 0.5;
+      if (shown >= target - 0.5) {
+        shown = target;
+        render(shown);
+        readout.textContent = `Smallest ε that flips this point ≈ ${(target / SCALE).toFixed(3)} (L2 radius ${target.toFixed(1)}px in this toy space).`;
+        return;
+      }
+      render(shown);
+      animId = requestAnimationFrame(step);
+    }
+    step();
+  });
+
+  render(null);
+})();
+</script>
 
 {% endblock %}
