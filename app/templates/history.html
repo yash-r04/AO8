@@ -29,6 +29,7 @@ async function loadHistory() {
         </div>
         <div class="hist-job-meta">
           ${new Date(job.queued_at).toLocaleString()} · Attacks: ${(job.attack_config?.attacks || []).join(", ") || "—"}
+          ${job.certification_method ? ` · Certified (${job.certification_method}): radius ${Number(job.certified_radius).toFixed(4)}, acc ${(job.certified_accuracy * 100).toFixed(1)}%` : ""}
         </div>
         <div class="hist-detail" id="detail-${job.id}"></div>
       </div>
@@ -47,8 +48,19 @@ async function toggleDetail(jobId) {
   const data = await resp.json();
   if (data.error) { detail.innerHTML = `<p class="hist-error">${data.error}</p>`; return; }
   if (data.job.status !== "done") { detail.innerHTML = `<p>Job is ${data.job.status}.</p>`; return; }
+
+  const certLine = data.job.certification_method
+    ? `<p class="page-sub">Certified (${data.job.certification_method}): radius ${Number(data.job.certified_radius).toFixed(4)}, certified acc ${(data.job.certified_accuracy * 100).toFixed(1)}%</p>`
+    : "";
+
   const cards = data.attack_results.map(r => {
     const riskClass = r.risk_score > 60 ? "risk-high" : r.risk_score > 30 ? "risk-medium" : "risk-low";
+    const artMetricsLine = [
+      r.empirical_robustness_score != null ? `empirical robustness: ${r.empirical_robustness_score.toFixed(4)}` : null,
+      r.clever_score != null ? `CLEVER: ${r.clever_score.toFixed(4)}` : null,
+      r.loss_sensitivity != null ? `loss sensitivity: ${r.loss_sensitivity.toFixed(4)}` : null,
+    ].filter(Boolean).join(" · ");
+
     return `
       <div class="hist-attack-card">
         <div class="hist-attack-top">
@@ -61,10 +73,12 @@ async function toggleDetail(jobId) {
           <span class="risk-high">Drop: -${(r.accuracy_drop * 100).toFixed(1)}%</span>
           <span>Flipped: ${r.n_samples_flipped}/${r.n_samples_total}</span>
         </div>
+        ${artMetricsLine ? `<div class="hist-attack-metrics mono">${artMetricsLine}</div>` : ""}
         ${r.safe_values_s3_key ? `<button class="btn btn-ghost" onclick="downloadSafeValues('${jobId}','${r.attack_type}',event)">⬇ Download Safe Values</button>` : ""}
       </div>`;
   }).join("");
-  detail.innerHTML = `<h3>Attack Results</h3>${cards}
+
+  detail.innerHTML = `<h3>Attack Results</h3>${certLine}${cards}
     <a class="btn btn-ghost" href="/results/${jobId}">Open full report →</a>`;
 }
 async function downloadSafeValues(jobId, attackType, event) {
