@@ -1390,3 +1390,9 @@ a:hover { color: var(--accent2); text-decoration: underline; }
     --text3: #f0f4ff;
   }
 }
+
+.harden-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: 1rem; }
+.harden-table th, .harden-table td { text-align: left; padding: .5rem .75rem; border-bottom: 1px solid var(--border); }
+.harden-table th { color: var(--text3); font-weight: 500; font-family: var(--font-mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+.harden-improve { color: var(--accent, #00d4aa); font-weight: 600; }
+.harden-worse { color: var(--attack, #f55); font-weight: 600; }

@@ -11,11 +11,13 @@ import json
 
 results_bp = Blueprint("results", __name__)
 
+
 @results_bp.route("/history")
 @login_required
 def history():
     """Render the history page."""
     return render_template("history.html", user=session.get("user"))
+
 
 @results_bp.route("/api/history")
 @login_required
@@ -41,6 +43,7 @@ def api_history():
     cur.close()
     conn.close()
     return jsonify([dict(j) for j in jobs])
+
 
 @results_bp.route("/api/job/<job_id>")
 @login_required
@@ -81,6 +84,15 @@ def api_job_detail(job_id):
     """, (job_id,))
     flipped = cur.fetchall()
 
+    cur.execute("""
+        SELECT attack_type, clean_accuracy_before, robust_accuracy_before,
+               clean_accuracy_after, robust_accuracy_after, robustness_improvement
+        FROM hardening_results
+        WHERE job_id = %s
+        ORDER BY attack_type
+    """, (job_id,))
+    hardening_results = cur.fetchall()
+
     cur.close()
     conn.close()
 
@@ -88,7 +100,9 @@ def api_job_detail(job_id):
         "job": dict(job),
         "attack_results": [dict(r) for r in attack_results],
         "flipped_samples": [dict(f) for f in flipped],
+        "hardening_results": [dict(h) for h in hardening_results],
     })
+
 
 @results_bp.route("/api/job/<job_id>/download-safe-values/<attack_type>")
 @login_required
@@ -112,6 +126,29 @@ def download_safe_values(job_id, attack_type):
 
     url = generate_download_url(result["safe_values_s3_key"], expires_in=300)
     return jsonify({"download_url": url, "expires_in": 300})
+
+
+@results_bp.route("/api/job/<job_id>/download-hardened-model")
+@login_required
+def download_hardened_model(job_id):
+    """Generate a 5-minute presigned download URL for the hardened model."""
+    user_id = session["user"]["id"]
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT hardened_model_s3_key FROM evaluation_jobs
+        WHERE id = %s AND user_id = %s
+    """, (job_id, user_id))
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not result or not result["hardened_model_s3_key"]:
+        return jsonify({"error": "Hardened model not found"}), 404
+
+    url = generate_download_url(result["hardened_model_s3_key"], expires_in=300)
+    return jsonify({"download_url": url, "expires_in": 300})
+
 
 @results_bp.route("/<job_id>/download.pdf")
 @login_required
@@ -219,7 +256,7 @@ def download_pdf(job_id):
     c.drawString(margin, y, "Overall Robustness Score")
     y -= 0.26 * inch
     c.setFont("Helvetica", 11)
-    score_text = f"{overall_score}%  —  {tag}" if overall_score is not None else "N/A"
+    score_text = f"{overall_score}%  \u2014  {tag}" if overall_score is not None else "N/A"
     c.drawString(margin, y, score_text)
     y -= 0.35 * inch
 
@@ -285,14 +322,12 @@ def download_pdf(job_id):
 
         y -= 0.12 * inch  # spacing before next attack block
 
-        # ---------- Flipped samples ----------
+    # ---------- Flipped samples ----------
     y = check_space(y, 0.4 * inch)
     c.setFont("Helvetica-Bold", 13)
     c.drawString(margin, y, "Most Fragile Samples (smallest perturbation to flip)")
     y -= 0.3 * inch
 
-    # Fixed x-positions per column instead of string padding —
-    # Helvetica isn't monospaced, so padded strings don't line up.
     col_x = {
         "attack": margin,
         "sample": margin + 0.9 * inch,

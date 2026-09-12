@@ -1,7 +1,7 @@
-# app/workers/tasks.py
 import io
 import json
 import uuid
+import logging
 import numpy as np
 import pandas as pd
 import boto3
@@ -12,6 +12,8 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime
 from celery import shared_task
 from app.config import Config
+
+logger = logging.getLogger(__name__)
 
 s3 = boto3.client(
     "s3",
@@ -94,6 +96,7 @@ def run_attack_job(self, job_id: str):
             adv_preds = np.argmax(classifier.predict(X_adv), axis=1)
             robust_acc = float(np.mean(adv_preds == y))
             n_flipped = int(np.sum(adv_preds != clean_preds))
+            art_metrics = compute_art_metrics(classifier, X, y, attack_name, epsilon)
 
             # Per-sample analysis
             perturbation = X_adv - X
@@ -154,13 +157,17 @@ def run_attack_job(self, job_id: str):
                     id, job_id, attack_type,
                     clean_accuracy, robust_accuracy, accuracy_drop,
                     risk_score, n_samples_total, n_samples_flipped,
-                    report_s3_key, safe_values_s3_key
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    report_s3_key, safe_values_s3_key,
+                    loss_sensitivity, clever_score, empirical_robustness_score
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (
                 result_id, job_id, attack_name,
                 clean_accuracy, robust_acc, accuracy_drop,
                 risk_score, len(X), n_flipped,
-                adv_s3_key, safe_s3_key
+                adv_s3_key, safe_s3_key,
+                art_metrics["loss_sensitivity"],
+                art_metrics["clever_score"],
+                art_metrics["empirical_robustness_score"],
             ))
 
             # Save sample-level results
@@ -312,3 +319,279 @@ def run_attack(classifier, X, y, attack_name, epsilon):
         raise ValueError(f"Unknown attack: {attack_name}")
 
     return attack.generate(X)
+
+def compute_art_metrics(classifier, X, y, attack_name, epsilon, max_samples=20):
+    """
+    ART's built-in robustness metrics (art.metrics), separate from the
+    hand-rolled accuracy_drop/risk_score. Capped to a small sample since
+    CLEVER and loss_sensitivity are gradient-heavy and slow.
+    """
+    from art.metrics import empirical_robustness, clever_u, loss_sensitivity
+
+    n = min(max_samples, len(X))
+    idx = np.random.choice(len(X), size=n, replace=False)
+    X_sample, y_sample = X[idx], y[idx]
+
+    metrics = {"loss_sensitivity": None, "clever_score": None, "empirical_robustness_score": None}
+
+    try:
+        ls = loss_sensitivity(classifier, X_sample, y_sample)
+        metrics["loss_sensitivity"] = float(np.mean(ls))
+    except Exception as e:
+        logger.warning(f"loss_sensitivity failed for {attack_name}: {e}")
+
+    try:
+        attack_params = {"eps": epsilon}
+        if attack_name == "pgd":
+            attack_params = {"eps": epsilon, "eps_step": epsilon / 4, "max_iter": 40}
+        er = empirical_robustness(classifier, X_sample, attack_name=attack_name, attack_params=attack_params)
+        metrics["empirical_robustness_score"] = float(er)
+    except Exception as e:
+        logger.warning(f"empirical_robustness failed for {attack_name}: {e}")
+
+    try:
+        scores = []
+        for i in range(min(5, n)):
+            score = clever_u(classifier, X_sample[i:i+1][0], nb_batches=10, batch_size=16, radius=epsilon * 2, norm=2)
+            scores.append(score)
+        metrics["clever_score"] = float(np.mean(scores)) if scores else None
+    except Exception as e:
+        logger.warning(f"clever_u failed for {attack_name}: {e}")
+
+    return metrics
+
+def build_trainable_classifier(model_bytes, framework, input_shape, n_classes, lr=1e-4):
+    """
+    Like build_classifier(), but attaches a real PyTorch optimizer —
+    required for ART's AdversarialTrainer.fit(), which calls the
+    underlying classifier's .fit() internally.
+
+    Only torchscript is supported here: the onnx path in build_classifier()
+    wraps an onnxruntime session with no trainable nn.Parameters (gradients
+    there are finite-difference estimates, not learnable weights), so there
+    is nothing for an optimizer to update.
+    """
+    import torch
+    import torch.nn as nn
+    from art.estimators.classification import PyTorchClassifier
+
+    if framework != "torchscript":
+        raise ValueError(
+            f"Hardening requires trainable parameters and is only supported "
+            f"for 'torchscript' models, not '{framework}'."
+        )
+
+    buffer = io.BytesIO(model_bytes)
+    model = torch.jit.load(buffer, map_location="cpu")
+    model.train()  # enable training mode (dropout/batchnorm behave differently than .eval())
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    return PyTorchClassifier(
+        model=model,
+        loss=nn.CrossEntropyLoss(),
+        optimizer=optimizer,
+        input_shape=input_shape,
+        nb_classes=n_classes,
+        clip_values=(0.0, 1.0),
+    )
+
+
+def harden_model(classifier, X, y, epsilon, nb_epochs=10, ratio=0.5):
+    """
+    Adversarial training via ART's AdversarialTrainer. `classifier` must
+    have been built with build_trainable_classifier() (i.e. has an
+    optimizer attached) — a classifier from build_classifier() will raise
+    "An optimizer is needed to train the model, but none for provided."
+    """
+    from art.attacks.evasion import ProjectedGradientDescent
+    from art.defences.trainer import AdversarialTrainer
+
+    attack = ProjectedGradientDescent(
+        estimator=classifier, eps=epsilon,
+        eps_step=epsilon / 4, max_iter=40,
+    )
+    trainer = AdversarialTrainer(classifier, attacks=attack, ratio=ratio)
+    trainer.fit(X, y, nb_epochs=nb_epochs, batch_size=32)
+    return classifier
+
+
+def serialize_hardened_model(classifier, framework):
+    """
+    Serializes a hardened torchscript classifier back to bytes so it can
+    be stored in S3 and re-downloaded later.
+    """
+    import torch
+
+    if framework == "torchscript":
+        scripted = torch.jit.script(classifier.model)
+        buffer = io.BytesIO()
+        torch.jit.save(scripted, buffer)
+        return buffer.getvalue()
+
+    else:
+        raise ValueError(f"Hardening/serialization not supported for framework '{framework}'")
+
+
+@celery.task(bind=True, max_retries=1)
+def run_hardening_job(self, job_id: str):
+    """
+    Separate task from run_attack_job: loads the same model/dataset,
+    trains a hardened copy, re-runs the same attacks on it, and stores
+    a before/after comparison plus the hardened model itself.
+
+    Only supports torchscript models — see build_trainable_classifier()
+    for why onnx and sklearn are excluded.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("SELECT * FROM evaluation_jobs WHERE id = %s", (job_id,))
+        job = dict(cur.fetchone())
+
+        cur.execute("""
+            UPDATE evaluation_jobs
+            SET hardening_status = 'running'
+            WHERE id = %s
+        """, (job_id,))
+        conn.commit()
+
+        config = job["attack_config"]
+        user_id = str(job["user_id"])
+
+        cur.execute("SELECT * FROM ml_models WHERE id = %s", (str(job["model_id"]),))
+        model_record = dict(cur.fetchone())
+
+        # Hardening needs real trainable parameters — only torchscript qualifies.
+        # (onnx is excluded here even though it's allowed for attacks/certification,
+        # because ONNXWrapper has no nn.Parameters for an optimizer to update.)
+        if model_record["framework"] != "torchscript":
+            cur.execute("""
+                UPDATE evaluation_jobs
+                SET hardening_status = 'unsupported',
+                    hardening_error = %s
+                WHERE id = %s
+            """, (
+                f"Hardening requires a trainable model and is only supported "
+                f"for 'torchscript', not '{model_record['framework']}'.",
+                job_id
+            ))
+            conn.commit()
+            return {"job_id": job_id, "status": "unsupported"}
+
+        model_obj = s3.get_object(Bucket=Config.S3_BUCKET, Key=model_record["s3_key"])
+        model_bytes = model_obj["Body"].read()
+
+        cur.execute("SELECT * FROM datasets WHERE id = %s", (str(job["dataset_id"]),))
+        dataset_record = dict(cur.fetchone())
+        dataset_obj = s3.get_object(Bucket=Config.S3_BUCKET, Key=dataset_record["s3_key"])
+        df = pd.read_csv(io.BytesIO(dataset_obj["Body"].read()))
+
+        X = df.iloc[:, :-1].values.astype(np.float32)
+        y = df.iloc[:, -1].values.astype(int)
+
+        # Hardening is expensive — cap sample size lower than the standard 500
+        if len(X) > 300:
+            X, y = X[:300], y[:300]
+
+        from sklearn.preprocessing import MinMaxScaler
+        scaler = MinMaxScaler()
+        X = scaler.fit_transform(X).astype(np.float32)
+        n_classes = len(np.unique(y))
+        epsilon = float(config.get("epsilon", 0.03))
+        attacks_to_run = config.get("attacks", ["fgsm"])
+
+        # --- Baseline (before hardening) — plain inference classifier is fine ---
+        baseline_classifier = build_classifier(
+            model_bytes=model_bytes,
+            framework=model_record["framework"],
+            input_shape=(X.shape[1],),
+            n_classes=n_classes,
+        )
+        clean_preds_before = np.argmax(baseline_classifier.predict(X), axis=1)
+        clean_acc_before = float(np.mean(clean_preds_before == y))
+
+        robust_acc_before = {}
+        for attack_name in attacks_to_run:
+            X_adv = run_attack(baseline_classifier, X, y, attack_name, epsilon)
+            adv_preds = np.argmax(baseline_classifier.predict(X_adv), axis=1)
+            robust_acc_before[attack_name] = float(np.mean(adv_preds == y))
+
+        # --- Hardening — needs the trainable classifier with an optimizer ---
+        hardened_classifier = build_trainable_classifier(
+            model_bytes=model_bytes,
+            framework=model_record["framework"],
+            input_shape=(X.shape[1],),
+            n_classes=n_classes,
+        )
+        harden_model(hardened_classifier, X, y, epsilon, nb_epochs=10)
+        hardened_classifier.model.eval()  # switch back to eval mode before predicting
+
+        # --- Post-hardening evaluation ---
+        clean_preds_after = np.argmax(hardened_classifier.predict(X), axis=1)
+        clean_acc_after = float(np.mean(clean_preds_after == y))
+
+        for attack_name in attacks_to_run:
+            X_adv = run_attack(hardened_classifier, X, y, attack_name, epsilon)
+            adv_preds = np.argmax(hardened_classifier.predict(X_adv), axis=1)
+            robust_acc_after = float(np.mean(adv_preds == y))
+
+            improvement = robust_acc_after - robust_acc_before[attack_name]
+
+            result_id = str(uuid.uuid4())
+            cur.execute("""
+                INSERT INTO hardening_results (
+                    id, job_id, attack_type,
+                    clean_accuracy_before, robust_accuracy_before,
+                    clean_accuracy_after, robust_accuracy_after,
+                    robustness_improvement
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                result_id, job_id, attack_name,
+                clean_acc_before, robust_acc_before[attack_name],
+                clean_acc_after, robust_acc_after,
+                improvement,
+            ))
+            conn.commit()
+
+        # --- Save hardened model to S3 ---
+        try:
+            hardened_bytes = serialize_hardened_model(hardened_classifier, model_record["framework"])
+            hardened_s3_key = f"users/{user_id}/results/{job_id}/hardened_model.pt"
+            s3.put_object(
+                Bucket=Config.S3_BUCKET,
+                Key=hardened_s3_key,
+                Body=hardened_bytes,
+                ServerSideEncryption="AES256",
+            )
+            cur.execute("""
+                UPDATE evaluation_jobs
+                SET hardened_model_s3_key = %s
+                WHERE id = %s
+            """, (hardened_s3_key, job_id))
+        except Exception:
+            # Serialization is best-effort — the before/after metrics are the
+            # main deliverable, so don't fail the job if export fails.
+            pass
+
+        cur.execute("""
+            UPDATE evaluation_jobs
+            SET hardening_status = 'done'
+            WHERE id = %s
+        """, (job_id,))
+        conn.commit()
+
+        return {"job_id": job_id, "status": "done"}
+
+    except Exception as e:
+        cur.execute("""
+            UPDATE evaluation_jobs
+            SET hardening_status = 'failed', hardening_error = %s
+            WHERE id = %s
+        """, (str(e), job_id))
+        conn.commit()
+        raise
+    finally:
+        cur.close()
+        conn.close()
