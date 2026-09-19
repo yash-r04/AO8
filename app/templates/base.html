@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AO8 — {% block title %}{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 
+  <a class="skip-link" href="#main-content">Skip to content</a>
   <div class="scan-line"></div>
 
   <nav class="navbar">
@@ -34,9 +35,9 @@
           <span class="nav-user-email">{{ user.email }}</span>
         </span>
       </div>
-      <a href="{{ url_for('auth.logout') }}" class="btn-login mono">Sign out</a>
+      <a href="{{ url_for('auth.logout') }}" class="btn-login">Sign out</a>
     {% else %}
-      <button class="btn-login mono" onclick="openLoginModal()">Sign in</button>
+      <button class="btn-login" onclick="openLoginModal()">Sign in</button>
     {% endif %}
   </nav>
 
@@ -44,11 +45,11 @@
   <div class="modal-overlay" id="loginModal" onclick="closeLoginModal(event)">
     <div class="modal-box">
       <div class="modal-header">
-        <div class="mono modal-tag">// sign in</div>
-        <button class="modal-close mono" onclick="closeLoginModal()">✕</button>
+        <div class="modal-tag">Sign in</div>
+        <button class="modal-close" onclick="closeLoginModal()" aria-label="Close">✕</button>
       </div>
       <h2 class="modal-title">Welcome to AO8</h2>
-      <p class="modal-sub mono">Sign in to access benchmarks and reports.</p>
+      <p class="modal-sub">Sign in to access benchmarks and reports.</p>
 
       <div class="modal-form">
         <a href="/auth/google" class="oauth-btn google-btn">
@@ -69,17 +70,17 @@
         </a>
       </div>
 
-      <p class="modal-footer-text mono">By signing in you agree to the <a href="#" class="modal-link">terms of use</a>.</p>
+      <p class="modal-footer-text">By signing in you agree to the <a href="#" class="modal-link">terms of use</a>.</p>
     </div>
   </div>
 
-  <main class="main-content">
+  <main class="main-content" id="main-content">
     {% block content %}{% endblock %}
   </main>
 
   <footer class="footer">
-    <span class="mono">AO8 // Adversarial Robustness Framework</span>
-    <span class="mono footer-right">Yashaswini C Rao</span>
+    <span>AO8 // Adversarial Robustness Framework</span>
+    <span class="footer-right">Yashaswini C Rao</span>
   </footer>
 
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>

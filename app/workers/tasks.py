@@ -66,10 +66,15 @@ def run_attack_job(self, job_id: str):
         if len(X) > 500:
             X, y = X[:500], y[:500]
 
-        # Normalize to [0,1]
-        from sklearn.preprocessing import MinMaxScaler
-        scaler = MinMaxScaler()
-        X = scaler.fit_transform(X).astype(np.float32)
+        # NOTE: we intentionally do NOT re-scale X here. Re-fitting a
+        # MinMaxScaler on just this uploaded sample computes a different
+        # min/max than whatever scaling the model was actually trained
+        # with, which silently corrupts every prediction (this caused
+        # clean_accuracy to come out far below chance level in testing).
+        # Uploaded data is expected to already be in the scale the model
+        # expects; clip_values=(0.0, 1.0) on the ART classifier below
+        # still keeps attacks from pushing values out of a sane range.
+        X = X.astype(np.float32)
 
         n_classes = len(np.unique(y))
 
@@ -119,9 +124,13 @@ def run_attack_job(self, job_id: str):
                     "top_features": top_features,
                 })
 
-            # Risk score for this attack
+            # Risk score for this attack.
+            # accuracy_drop can legitimately be negative or near-zero if an
+            # attack barely affects the model. Clamp risk_score to [0, 100]
+            # so a negative drop can't produce a negative "risk" or push
+            # the overall score above 100%.
             accuracy_drop = clean_accuracy - robust_acc
-            risk_score = round(min(accuracy_drop * 100 * 1.5, 100), 2)
+            risk_score = round(min(max(accuracy_drop * 100 * 1.5, 0.0), 100.0), 2)
 
             # Save adversarial examples to S3
             adv_buffer = io.BytesIO()
@@ -495,9 +504,8 @@ def run_hardening_job(self, job_id: str):
         if len(X) > 300:
             X, y = X[:300], y[:300]
 
-        from sklearn.preprocessing import MinMaxScaler
-        scaler = MinMaxScaler()
-        X = scaler.fit_transform(X).astype(np.float32)
+        # Same rationale as run_attack_job: do NOT re-scale uploaded data.
+        X = X.astype(np.float32)
         n_classes = len(np.unique(y))
         epsilon = float(config.get("epsilon", 0.03))
         attacks_to_run = config.get("attacks", ["fgsm"])

@@ -176,15 +176,15 @@
 </section>
 
 <style>
-  .attack-eyebrow { font-size: 0.72rem; color: var(--attack, #f55); letter-spacing: 0.06em; margin-bottom: 0.5rem; }
+  .attack-eyebrow { font-size: 0.85rem; color: var(--attack, #ff5470); letter-spacing: 0.06em; margin-bottom: 0.5rem; }
 
   .epsilon-demo, .attack-demo {
     display: grid;
-    grid-template-columns: 1.3fr 1fr;
-    gap: 1.5rem;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
     align-items: start;
     margin-top: 1.25rem;
-    border-top: 1px solid var(--border, #333);
+    border-top: 1px solid var(--border, #1e293b);
     padding-top: 1.25rem;
   }
   @media (max-width: 760px) {
@@ -194,49 +194,70 @@
   .epsilon-svg, .attack-svg {
     width: 100%;
     height: auto;
-    background: var(--bg-alt, #0d0d0d);
-    border: 1px solid var(--border, #333);
-    border-radius: 10px;
+    background: var(--bg3, var(--bg-alt, #0d1117));
+    border: 1px solid var(--border2, var(--border, #1e293b));
+    border-radius: var(--radius-lg, 10px);
     touch-action: none;
   }
 
   .epsilon-controls, .attack-demo-controls {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    justify-content: center;
+    gap: 0.85rem;
   }
-  .epsilon-label { font-size: 0.85rem; }
-  .epsilon-hint, .attack-note { font-size: 0.72rem; line-height: 1.45; color: var(--text3, #888); }
-  .epsilon-readout, .attack-note#cwReadout { font-size: 0.78rem; color: var(--text, #eee); min-height: 1.2em; }
+  .epsilon-label { font-size: 0.95rem; color: var(--text2, #2461b5); }
+
+  /* These carry a "dim" class from the base theme meant for throwaway
+     captions, but here they're the main explanatory text, so we override
+     both the size and the dimming so they're actually easy to read. */
+  .epsilon-hint.dim, .attack-note.dim {
+    font-size: 0.95rem !important;
+    line-height: 1.55 !important;
+    color: var(--text2, #2461b5) !important;
+    opacity: 1 !important;
+  }
+  .epsilon-readout, .attack-note#cwReadout {
+    font-size: 1rem;
+    color: var(--text, #163661);
+    min-height: 1.2em;
+    font-family: var(--font-mono, monospace);
+    line-height: 1.5;
+  }
+
+  /* small legend so the colors are self-explanatory, not just "figure it out" */
+  .demo-legend { display: flex; gap: 1.1rem; font-size: 0.85rem; color: var(--text2, #0b3065); margin-bottom: 0.5rem; }
+  .demo-legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .demo-legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
   input[type="range"] {
     -webkit-appearance: none;
     width: 100%;
     height: 4px;
     border-radius: 2px;
-    background: var(--border, #333);
+    background: var(--border2, var(--border, #1e293b));
     outline: none;
   }
   input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
     width: 14px; height: 14px; border-radius: 50%;
-    background: var(--accent, #6cf);
+    background: var(--accent, #2dd4bf);
     cursor: pointer;
-    border: 2px solid var(--bg, #0a0a0a);
+    border: 2px solid var(--bg, #0b1120);
   }
   input[type="range"]::-moz-range-thumb {
     width: 14px; height: 14px; border-radius: 50%;
-    background: var(--accent, #6cf);
+    background: var(--accent, #2dd4bf);
     cursor: pointer;
-    border: 2px solid var(--bg, #0a0a0a);
+    border: 2px solid var(--bg, #0b1120);
   }
 
   .safevalues-steps { display: grid; gap: 1.1rem; margin-top: 1.25rem; }
-  .sv-step { display: grid; grid-template-columns: auto 1fr; gap: 1rem; align-items: start; border-top: 1px solid var(--border, #333); padding-top: 1.1rem; }
+  .sv-step { display: grid; grid-template-columns: auto 1fr; gap: 1rem; align-items: start; border-top: 1px solid var(--border, #1e293b); padding-top: 1.1rem; }
   .sv-step:first-child { border-top: none; padding-top: 0; }
-  .sv-step-num { color: var(--accent, #6cf); font-size: 0.85rem; padding-top: 0.15rem; }
-  .sv-step-title { font-size: 0.95rem; margin: 0 0 0.3rem; }
-  .sv-step-desc { font-size: 0.85rem; color: var(--text3, #aaa); line-height: 1.5; margin: 0; }
+  .sv-step-num { color: var(--accent, #2dd4bf); font-size: 0.85rem; padding-top: 0.15rem; }
+  .sv-step-title { font-size: 0.95rem; margin: 0 0 0.3rem; color: var(--text, #1a4378); }
+  .sv-step-desc { font-size: 0.85rem; color: var(--text2, #1b3e6d); line-height: 1.5; margin: 0; }
 </style>
 
 <script>
@@ -245,8 +266,27 @@
    None of this touches real model data — it's a 2D stand-in so people
    can drag points around and see what "epsilon", "step", and "minimum
    perturbation that flips the label" actually mean geometrically.
+
+   Behavior below is unchanged from the working version: FGSM has a
+   single eps slider + step toggle, PGD has eps + steps sliders + a run
+   button (steps slider only updates its label until you hit Run), and
+   C&W just searches on click. The only thing that changed is how it's
+   drawn — grid, legend, halo rings, and theme colors with safe
+   fallbacks so nothing goes invisible if a CSS var is missing.
    ------------------------------------------------------------------- */
 const NS = "http://www.w3.org/2000/svg";
+
+const COLORS = {
+  accent:  'var(--accent, #2dd4bf)',
+  accent2: 'var(--accent2, #38bdf8)',
+  attack:  'var(--attack, #ff5470)',
+  warn:    'var(--warn, #f5a623)',
+  text:    'var(--text, #307ee4)',
+  text2:   'var(--text2, #2968c0)',
+  text3:   'var(--text3, #09111c)',
+  border:  'var(--border, #1e293b)',
+  bg:      'var(--bg, #0b1120)',
+};
 
 function svgEl(tag, attrs) {
   const el = document.createElementNS(NS, tag);
@@ -256,19 +296,59 @@ function svgEl(tag, attrs) {
 
 // A simple curved decision boundary shared by all four demos, scaled per-canvas.
 function boundaryY(x, w, h) {
-  // gentle S-curve across the canvas
   const t = x / w;
   return h * 0.55 + Math.sin(t * Math.PI * 1.3) * h * 0.16 - (t - 0.5) * h * 0.25;
 }
 
-function drawBoundary(svg, w, h, color) {
+// Faint background grid so each canvas reads as a coordinate space,
+// not just an empty dark rectangle.
+function drawGrid(svg, w, h) {
+  const step = 40;
+  for (let x = step; x < w; x += step) {
+    svg.appendChild(svgEl('line', { x1: x, y1: 0, x2: x, y2: h, stroke: COLORS.border, 'stroke-width': 1 }));
+  }
+  for (let y = step; y < h; y += step) {
+    svg.appendChild(svgEl('line', { x1: 0, y1: y, x2: w, y2: y, stroke: COLORS.border, 'stroke-width': 1 }));
+  }
+}
+
+// The boundary gets a dark "halo" stroke underneath a bright dashed line
+// on top, so it stays readable regardless of what's behind it.
+function drawBoundary(svg, w, h) {
   let d = `M 0 ${boundaryY(0, w, h).toFixed(1)}`;
   for (let x = 0; x <= w; x += 8) d += ` L ${x} ${boundaryY(x, w, h).toFixed(1)}`;
-  svg.appendChild(svgEl('path', { d, stroke: color || 'var(--border, #555)', 'stroke-width': 2, fill: 'none', 'stroke-dasharray': '6 5' }));
+  svg.appendChild(svgEl('path', { d, stroke: COLORS.bg, 'stroke-width': 5, fill: 'none', 'stroke-linecap': 'round' }));
+  svg.appendChild(svgEl('path', { d, stroke: COLORS.accent2, 'stroke-width': 2, fill: 'none', 'stroke-dasharray': '7 5', 'stroke-linecap': 'round' }));
 }
 
 function classOf(x, y, w, h) { return y > boundaryY(x, w, h) ? 'A' : 'B'; }
-function classColor(cls) { return cls === 'A' ? '#6cf' : '#f96'; }
+function classColor(cls) { return cls === 'A' ? COLORS.accent : COLORS.attack; }
+
+// Small color key inserted above a canvas so the colors are self-explanatory.
+function legend(svg) {
+  const el = document.createElement('div');
+  el.className = 'demo-legend';
+  el.innerHTML = `<span><i style="background:${COLORS.accent2}"></i>decision boundary</span>`;
+  svg.parentNode.insertBefore(el, svg);
+}
+
+function toLocal(svg, evt, W, H) {
+  const rect = svg.getBoundingClientRect();
+  const x = (evt.clientX - rect.left) / rect.width * W;
+  const y = (evt.clientY - rect.top) / rect.height * H;
+  return { x, y };
+}
+
+// Draws a small filled triangle at (toX,toY) pointing away from (fromX,fromY).
+// Used instead of an SVG <marker> arrowhead — same look, no cross-browser
+// custom-property-inheritance quirks to worry about.
+function arrowHead(fromX, fromY, toX, toY, color, size = 9) {
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+  const p1 = { x: toX, y: toY };
+  const p2 = { x: toX - size * Math.cos(angle - Math.PI / 7), y: toY - size * Math.sin(angle - Math.PI / 7) };
+  const p3 = { x: toX - size * Math.cos(angle + Math.PI / 7), y: toY - size * Math.sin(angle + Math.PI / 7) };
+  return svgEl('polygon', { points: `${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`, fill: color });
+}
 
 /* ---------------- Epsilon demo (draggable point) ---------------- */
 (function epsilonDemo() {
@@ -278,11 +358,14 @@ function classColor(cls) { return cls === 'A' ? '#6cf' : '#f96'; }
   const readout = document.getElementById('epsilonReadout');
   const W = 480, H = 320, SCALE = 260; // eps(0..0.4) -> pixel radius via SCALE
 
+  legend(svg);
+
   let point = { x: 160, y: 120 };
   let dragging = false;
 
   function render() {
     svg.innerHTML = '';
+    drawGrid(svg, W, H);
     drawBoundary(svg, W, H);
 
     const eps = parseFloat(slider.value);
@@ -290,7 +373,11 @@ function classColor(cls) { return cls === 'A' ? '#6cf' : '#f96'; }
     const startCls = classOf(point.x, point.y, W, H);
 
     // reachable disc
-    svg.appendChild(svgEl('circle', { cx: point.x, cy: point.y, r, fill: 'var(--accent, #6cf)', 'fill-opacity': 0.12, stroke: 'var(--accent, #6cf)', 'stroke-width': 1.2, 'stroke-dasharray': '3 3' }));
+    svg.appendChild(svgEl('circle', {
+      cx: point.x, cy: point.y, r,
+      fill: COLORS.accent, 'fill-opacity': 0.16,
+      stroke: COLORS.accent, 'stroke-width': 2.5, 'stroke-dasharray': '4 4'
+    }));
 
     // does the disc cross the boundary anywhere?
     let crosses = false;
@@ -300,12 +387,17 @@ function classColor(cls) { return cls === 'A' ? '#6cf' : '#f96'; }
       if (classOf(px, py, W, H) !== startCls) { crosses = true; break; }
     }
 
-    svg.appendChild(svgEl('circle', { cx: point.x, cy: point.y, r: 7, fill: classColor(startCls), stroke: '#000', 'stroke-width': 1, style: 'cursor:grab' }));
+    // dark halo ring behind the dot so it pops off the boundary line too
+    svg.appendChild(svgEl('circle', { cx: point.x, cy: point.y, r: 9, fill: COLORS.bg }));
+    svg.appendChild(svgEl('circle', {
+      cx: point.x, cy: point.y, r: 7,
+      fill: classColor(startCls), stroke: COLORS.text, 'stroke-width': 2.5, style: 'cursor:grab'
+    }));
 
     readout.textContent = crosses
       ? `At ε = ${eps.toFixed(2)}, this point CAN be pushed across the boundary — the model's prediction is not guaranteed to hold.`
       : `At ε = ${eps.toFixed(2)}, every point reachable within budget stays on the same side — locally robust here.`;
-    readout.style.color = crosses ? '#f77' : '#7d7';
+    readout.style.color = crosses ? COLORS.attack : COLORS.accent;
   }
 
   svg.addEventListener('pointerdown', (e) => {
@@ -325,13 +417,6 @@ function classColor(cls) { return cls === 'A' ? '#6cf' : '#f96'; }
   render();
 })();
 
-function toLocal(svg, evt, W, H) {
-  const rect = svg.getBoundingClientRect();
-  const x = (evt.clientX - rect.left) / rect.width * W;
-  const y = (evt.clientY - rect.top) / rect.height * H;
-  return { x, y };
-}
-
 /* ---------------- FGSM demo (single step) ---------------- */
 (function fgsmDemo() {
   const svg = document.getElementById('fgsmSvg');
@@ -340,17 +425,18 @@ function toLocal(svg, evt, W, H) {
   const stepBtn = document.getElementById('fgsmStep');
   const W = 480, H = 300, SCALE = 260;
 
+  legend(svg);
+
   const origin = { x: 150, y: 90 };
   let stepped = false;
 
   function bestDirection(x, y, eps) {
-    // move toward boundary: sample directions, pick the one landing deepest on other side
     const r = eps * SCALE;
     let best = null, bestScore = -Infinity;
     for (let a = 0; a < 360; a += 5) {
       const rad = a * Math.PI / 180;
       const px = x + Math.cos(rad) * r, py = y + Math.sin(rad) * r;
-      const score = py - boundaryY(px, W, H); // how far past the boundary
+      const score = py - boundaryY(px, W, H);
       if (score > bestScore) { bestScore = score; best = { x: px, y: py }; }
     }
     return best;
@@ -358,26 +444,36 @@ function toLocal(svg, evt, W, H) {
 
   function render() {
     svg.innerHTML = '';
+    drawGrid(svg, W, H);
     drawBoundary(svg, W, H);
+
     const eps = parseFloat(epsSlider.value);
     const r = eps * SCALE;
     const cls = classOf(origin.x, origin.y, W, H);
 
-    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r, fill: 'none', stroke: 'var(--border, #555)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
-    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 6, fill: classColor(cls), stroke: '#000' }));
+    svg.appendChild(svgEl('circle', {
+      cx: origin.x, cy: origin.y, r,
+      fill: 'none', stroke: COLORS.text3, 'stroke-width': 2.5, 'stroke-dasharray': '3 3', 'stroke-opacity': 0.5
+    }));
+    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 9, fill: COLORS.bg }));
+    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 6, fill: classColor(cls), stroke: COLORS.text, 'stroke-width': 2.5 }));
 
     if (stepped) {
       const target = bestDirection(origin.x, origin.y, eps);
-      svg.appendChild(svgEl('line', { x1: origin.x, y1: origin.y, x2: target.x, y2: target.y, stroke: '#f55', 'stroke-width': 2, 'marker-end': 'url(#arrowFgsm)' }));
-      const newCls = classOf(target.x, target.y, W, H);
-      svg.appendChild(svgEl('circle', { cx: target.x, cy: target.y, r: 6, fill: classColor(newCls), stroke: newCls !== cls ? '#f00' : '#000', 'stroke-width': newCls !== cls ? 2 : 1 }));
-    }
 
-    const defs = svgEl('defs', {});
-    const marker = svgEl('marker', { id: 'arrowFgsm', markerWidth: 8, markerHeight: 8, refX: 6, refY: 4, orient: 'auto' });
-    marker.appendChild(svgEl('path', { d: 'M0,0 L8,4 L0,8 Z', fill: '#f55' }));
-    defs.appendChild(marker);
-    svg.appendChild(defs);
+      svg.appendChild(svgEl('line', {
+        x1: origin.x, y1: origin.y, x2: target.x, y2: target.y,
+        stroke: COLORS.attack, 'stroke-width': 2.5
+      }));
+      svg.appendChild(arrowHead(origin.x, origin.y, target.x, target.y, COLORS.attack, 9));
+
+      const newCls = classOf(target.x, target.y, W, H);
+      svg.appendChild(svgEl('circle', { cx: target.x, cy: target.y, r: 9, fill: COLORS.bg }));
+      svg.appendChild(svgEl('circle', {
+        cx: target.x, cy: target.y, r: 6,
+        fill: classColor(newCls), stroke: newCls !== cls ? COLORS.attack : COLORS.text, 'stroke-width': newCls !== cls ? 2.5 : 1.5
+      }));
+    }
   }
 
   epsSlider.addEventListener('input', () => { epsVal.textContent = parseFloat(epsSlider.value).toFixed(2); render(); });
@@ -395,6 +491,9 @@ function toLocal(svg, evt, W, H) {
   const runBtn = document.getElementById('pgdRun');
   const W = 480, H = 300, SCALE = 260;
   const origin = { x: 140, y: 80 };
+
+  legend(svg);
+
   let path = null;
 
   function runPGD(eps, steps) {
@@ -403,11 +502,9 @@ function toLocal(svg, evt, W, H) {
     const pts = [{ ...cur }];
     const stepSize = (r * 1.6) / steps;
     for (let i = 0; i < steps; i++) {
-      // local gradient step: move toward increasing y-boundary distance, with a little noise
       const dx = (Math.random() - 0.4) * stepSize;
       let dy = stepSize;
       let nx = cur.x + dx, ny = cur.y + dy;
-      // project back into epsilon ball around origin
       const dist = Math.hypot(nx - origin.x, ny - origin.y);
       if (dist > r) {
         const scale = r / dist;
@@ -422,24 +519,36 @@ function toLocal(svg, evt, W, H) {
 
   function render() {
     svg.innerHTML = '';
+    drawGrid(svg, W, H);
     drawBoundary(svg, W, H);
+
     const eps = parseFloat(epsSlider.value);
     const r = eps * SCALE;
     const cls = classOf(origin.x, origin.y, W, H);
-    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r, fill: 'none', stroke: 'var(--border, #555)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
-    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 6, fill: classColor(cls), stroke: '#000' }));
+
+    svg.appendChild(svgEl('circle', {
+      cx: origin.x, cy: origin.y, r,
+      fill: 'none', stroke: COLORS.text3, 'stroke-width': 2.5, 'stroke-dasharray': '3 3', 'stroke-opacity': 0.5
+    }));
+    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 9, fill: COLORS.bg }));
+    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 6, fill: classColor(cls), stroke: COLORS.text, 'stroke-width': 2.5 }));
 
     if (path) {
       let d = `M ${path[0].x} ${path[0].y}`;
       path.slice(1).forEach(p => d += ` L ${p.x} ${p.y}`);
-      svg.appendChild(svgEl('path', { d, fill: 'none', stroke: '#fb5', 'stroke-width': 2 }));
+      svg.appendChild(svgEl('path', { d, fill: 'none', stroke: COLORS.warn, 'stroke-width': 2 }));
       path.forEach((p, i) => {
         if (i === 0) return;
-        svg.appendChild(svgEl('circle', { cx: p.x, cy: p.y, r: 3, fill: '#fb5' }));
+        svg.appendChild(svgEl('circle', { cx: p.x, cy: p.y, r: 3, fill: COLORS.warn }));
       });
+
       const final = path[path.length - 1];
       const newCls = classOf(final.x, final.y, W, H);
-      svg.appendChild(svgEl('circle', { cx: final.x, cy: final.y, r: 6, fill: classColor(newCls), stroke: newCls !== cls ? '#f00' : '#000', 'stroke-width': newCls !== cls ? 2 : 1 }));
+      svg.appendChild(svgEl('circle', { cx: final.x, cy: final.y, r: 9, fill: COLORS.bg }));
+      svg.appendChild(svgEl('circle', {
+        cx: final.x, cy: final.y, r: 6,
+        fill: classColor(newCls), stroke: newCls !== cls ? COLORS.attack : COLORS.text, 'stroke-width': newCls !== cls ? 2.5 : 1.5
+      }));
     }
   }
 
@@ -459,6 +568,9 @@ function toLocal(svg, evt, W, H) {
   const readout = document.getElementById('cwReadout');
   const W = 480, H = 300, SCALE = 260;
   const origin = { x: 140, y: 70 };
+
+  legend(svg);
+
   let foundR = null;
   let animId = null;
 
@@ -483,12 +595,19 @@ function toLocal(svg, evt, W, H) {
 
   function render(rShown) {
     svg.innerHTML = '';
+    drawGrid(svg, W, H);
     drawBoundary(svg, W, H);
+
     const cls = classOf(origin.x, origin.y, W, H);
     if (rShown != null) {
-      svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: rShown, fill: 'none', stroke: '#c8f', 'stroke-width': 1.4, 'stroke-dasharray': rShown === foundR ? '0' : '3 3' }));
+      svg.appendChild(svgEl('circle', {
+        cx: origin.x, cy: origin.y, r: rShown,
+        fill: 'none', stroke: COLORS.accent2, 'stroke-width': 2.5,
+        'stroke-dasharray': rShown === foundR ? '0' : '3 3'
+      }));
     }
-    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 6, fill: classColor(cls), stroke: '#000' }));
+    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 9, fill: COLORS.bg }));
+    svg.appendChild(svgEl('circle', { cx: origin.x, cy: origin.y, r: 6, fill: classColor(cls), stroke: COLORS.text, 'stroke-width': 2.5 }));
   }
 
   runBtn.addEventListener('click', () => {
@@ -497,12 +616,14 @@ function toLocal(svg, evt, W, H) {
     foundR = target;
     let shown = 0;
     readout.textContent = 'searching...';
+    readout.style.color = COLORS.text3;
     function step() {
       shown += (target - shown) * 0.15 + 0.5;
       if (shown >= target - 0.5) {
         shown = target;
         render(shown);
         readout.textContent = `Smallest ε that flips this point ≈ ${(target / SCALE).toFixed(3)} (L2 radius ${target.toFixed(1)}px in this toy space).`;
+        readout.style.color = COLORS.accent2;
         return;
       }
       render(shown);

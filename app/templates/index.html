@@ -208,24 +208,47 @@
     letter-spacing: 0.06em;
     color: var(--attack);
     padding: 0.3rem 0.7rem;
-    border: 1px solid rgba(255, 75, 110, 0.35);
+    border: 2px solid rgb(255, 75, 111);
     border-radius: 999px;
-    background: rgba(255, 75, 110, 0.08);
+    background: rgba(255, 75, 111, 0.73);
     white-space: nowrap;
   }
   .panel-meta {
     display: flex;
     justify-content: space-between;
-    color: var(--text3);
-    font-size: 0.76rem;
+    color: var(--text3, #006aff);
+    font-size: 0.65rem;
     margin-bottom: 0.5rem;
   }
-  .panel-bars { gap: 0.6rem; }
-  .panel-bar span { background: var(--accent); }
+  /* FIX: the two bars are plain <span style="width:X%"> elements. A <span>
+     is inline by default, and inline elements ignore width/height entirely,
+     so that inline style was silently doing nothing — the bars had no
+     visible fill. Giving .panel-bar a real track (height + background) and
+     forcing the inner <span> to display:block makes the width actually
+     take effect. */
+  .panel-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 0.5rem;
+  }
+  .panel-bar {
+    position: relative;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--border, #1e293b);
+    overflow: hidden;
+  }
+  .panel-bar span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent, #2dd4bf);
+  }
   .panel-footnote {
     margin-top: 1rem;
-    font-size: 0.78rem;
-    color: var(--text3);
+    font-size: 0.65rem;
+    color: var(--text3, #3869ae);
   }
   .accent-attack { color: var(--attack); }
   .panel-mini-value {
