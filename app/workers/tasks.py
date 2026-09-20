@@ -259,7 +259,20 @@ def build_classifier(model_bytes, framework, input_shape, n_classes):
                 ctx.sess = sess
                 ctx.inp_name = inp_name
                 x_np = x.detach().cpu().numpy().astype(np.float32)
-                output = sess.run(None, {inp_name: x_np})[0]
+                # Some uploaded ONNX models are traced/exported assuming a
+                # batch size of 1 (e.g. a bare `.squeeze()` with no axis
+                # bakes in "squeeze axis 0" if the example input had batch
+                # size 1). Feeding a real batch (ART's default is 128) then
+                # crashes with a Squeeze shape error. Running one sample at
+                # a time always matches what the model was actually traced
+                # for, regardless of how it was exported -- slower, but
+                # correct for any uploaded model, not just well-behaved ones.
+                outputs = []
+                for i in range(x_np.shape[0]):
+                    single = x_np[i:i + 1]
+                    out = sess.run(None, {inp_name: single})[0]
+                    outputs.append(out)
+                output = np.concatenate(outputs, axis=0)
                 return torch.tensor(output, dtype=torch.float32)
 
             @staticmethod
@@ -271,8 +284,15 @@ def build_classifier(model_bytes, framework, input_shape, n_classes):
                 for i in range(x_np.shape[1]):
                     x_plus = x_np.copy(); x_plus[:, i] += eps
                     x_minus = x_np.copy(); x_minus[:, i] -= eps
-                    out_plus  = ctx.sess.run(None, {ctx.inp_name: x_plus})[0]
-                    out_minus = ctx.sess.run(None, {ctx.inp_name: x_minus})[0]
+
+                    # Same one-sample-at-a-time rule applies here.
+                    out_plus_rows, out_minus_rows = [], []
+                    for j in range(x_np.shape[0]):
+                        out_plus_rows.append(ctx.sess.run(None, {ctx.inp_name: x_plus[j:j+1]})[0])
+                        out_minus_rows.append(ctx.sess.run(None, {ctx.inp_name: x_minus[j:j+1]})[0])
+                    out_plus = np.concatenate(out_plus_rows, axis=0)
+                    out_minus = np.concatenate(out_minus_rows, axis=0)
+
                     grad[:, i] = np.sum(
                         (out_plus - out_minus) / (2 * eps) * grad_output.cpu().numpy(),
                         axis=1
@@ -311,7 +331,33 @@ def run_attack(classifier, X, y, attack_name, epsilon):
         FastGradientMethod,
         ProjectedGradientDescent,
         CarliniL2Method,
+        HopSkipJump,
     )
+    from art.estimators.estimator import LossGradientsMixin
+
+    # FGSM / PGD / CW all need gradients (how the loss changes w.r.t. the
+    # input). Tree-based models (sklearn RandomForest, DecisionTree, etc.)
+    # have no gradients -- there's no "slope" to follow between branches --
+    # so ART's SklearnClassifier simply doesn't implement LossGradientsMixin
+    # for them. Rather than fail the whole job, fall back to a black-box,
+    # gradient-free attack (HopSkipJump) that only needs the model's
+    # predictions, not its internals. It's slower and needs many queries,
+    # so max_iter/max_eval are kept modest for demo-speed.
+    has_gradients = isinstance(classifier, LossGradientsMixin)
+
+    if not has_gradients and attack_name in ("fgsm", "pgd", "cw"):
+        logger.info(
+            f"{attack_name} requires gradients but classifier ({type(classifier).__name__}) "
+            f"has none -- falling back to HopSkipJump (gradient-free)."
+        )
+        attack = HopSkipJump(
+            classifier=classifier,
+            targeted=False,
+            max_iter=20,
+            max_eval=1000,
+            init_eval=100,
+        )
+        return attack.generate(X)
 
     if attack_name == "fgsm":
         attack = FastGradientMethod(estimator=classifier, eps=epsilon)
@@ -324,6 +370,8 @@ def run_attack(classifier, X, y, attack_name, epsilon):
         attack = CarliniL2Method(
             classifier=classifier, max_iter=50
         )
+    elif attack_name == "hopskipjump":
+        attack = HopSkipJump(classifier=classifier, targeted=False, max_iter=20, max_eval=1000, init_eval=100)
     else:
         raise ValueError(f"Unknown attack: {attack_name}")
 

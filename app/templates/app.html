@@ -2,6 +2,23 @@
 {% block title %}Test Your Model{% endblock %}
 {% block content %}
 
+<div class="aside-card aside-warn" id="compat-warning">
+  <div class="aside-title mono">⚠ before you upload</div>
+  <p class="aside-text">
+    AO8 runs your model exactly as uploaded — it does not re-train, re-scale,
+    or adjust anything to fit your data. A mismatch here produces misleading
+    results (near-zero accuracy, scores over 100%, or a failed job), not a
+    helpful error. Check these first:
+  </p>
+  <ul class="aside-list">
+    <li>Your CSV is already scaled the way your model expects — AO8 does not normalize it for you</li>
+    <li>Feature columns are in the same order the model was trained on; last column = label</li>
+    <li>Binary classifiers output shape <code>[batch, 2]</code> (one score per class), not a single value</li>
+    <li>Labels are plain integer class indices (<code>0</code>, <code>1</code>, …), not one-hot or strings</li>
+    <li>.pt models are traced/scripted with <code>.eval()</code> called, and run standalone before upload</li>
+  </ul>
+</div>
+
 <section class="section">
   <div class="section-tag mono">// 01 upload model</div>
   <div class="card dropzone" id="model-dropzone">
@@ -61,6 +78,19 @@
 <a href="{{ url_for('results.history') }}" class="btn btn-ghost">View History &amp; Results →</a>
 
 <style>
+  #compat-warning { margin-bottom: 2rem; }
+  #compat-warning .aside-list { gap: .5rem; margin-top: .75rem; }
+  #compat-warning .aside-list li::before { content: '→ '; color: var(--warn); }
+  #compat-warning code {
+    font-family: var(--font-mono);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.05rem 0.4rem;
+    font-size: 0.85em;
+    color: var(--accent);
+  }
+
   .dropzone { cursor: pointer; border: 1.5px dashed var(--border, #333); text-align: center; padding: 2rem 1rem; transition: border-color .15s, background .15s; }
   .dropzone.dragover { border-color: var(--accent, #6cf); background: rgba(108,204,255,0.06); }
   .dropzone.done { border-style: solid; border-color: var(--accent, #6cf); }
