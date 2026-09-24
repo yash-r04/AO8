@@ -950,6 +950,35 @@ function renderReport(data) {
    */
 
   if (
+    data.job.model_framework &&
+    data.job.model_framework !== 'torchscript' &&
+    data.job.hardening_status !== 'done' &&
+    data.job.hardening_status !== 'running' &&
+    data.job.hardening_status !== 'queued'
+  ) {
+
+    /*
+     * Hardening needs trainable parameters and an optimizer, which only
+     * the torchscript path supports (see build_trainable_classifier in
+     * tasks.py). Rather than let the user click "Harden this model",
+     * wait for a queued job, and find out it's unsupported only after
+     * Celery picks it up, catch it here immediately -- we already know
+     * the model's framework from this same API response.
+     */
+
+    document.getElementById(
+      'hardenBtn'
+    ).style.display = 'none';
+
+    document.getElementById(
+      'hardeningStatus'
+    ).textContent =
+      `Hardening isn't available for ${data.job.model_framework} models ` +
+      `— only TorchScript (.pt) models can be adversarially trained, ` +
+      `since ONNX and scikit-learn models here have no trainable ` +
+      `PyTorch parameters for AO8 to update.`;
+
+  } else if (
     data.job.hardening_status === 'done'
   ) {
 
@@ -1754,4 +1783,3 @@ pollAndRender();
 </script>
 
 {% endblock %}
-```

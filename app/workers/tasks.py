@@ -25,6 +25,72 @@ s3 = boto3.client(
 def get_db():
     return psycopg2.connect(Config.DATABASE_URL, cursor_factory=RealDictCursor)
 
+
+def stratified_sample(X, y, n_samples, random_state=42, min_per_class=10):
+    """
+    Replaces naive X[:n], y[:n] slicing. Real-world datasets (fraud,
+    intrusion detection, rare disease...) are almost always imbalanced --
+    the minority class can be well under 1% of rows. Taking a fixed prefix
+    of the file risks silently grabbing a single-class subset, which then
+    fails deep inside ART with a cryptic "nb_classes must be >= 2" error,
+    or worse, silently skips metrics that need both classes (empirical
+    robustness, CLEVER, loss sensitivity) with only a log warning.
+
+    Unlike sklearn's stratify (which preserves the TRUE class ratio), this
+    guarantees at least `min_per_class` examples of every class when
+    available, topping up the rest with the majority class. For a training
+    set you'd want the true ratio; for an EVALUATION/attack sample, a
+    proportional sample of a very rare class (e.g. 0.18% fraud) still
+    leaves too few minority examples to compute per-class metrics on at
+    all, even though the sample technically contains "both classes".
+    """
+    n_classes = len(np.unique(y))
+    if n_classes < 2:
+        raise ValueError(
+            f"Dataset's label column contains only {n_classes} class. "
+            f"At least 2 classes are required to run an attack or "
+            f"compute robustness metrics."
+        )
+
+    if len(X) <= n_samples:
+        return X, y
+
+    rng = np.random.RandomState(random_state)
+    classes, counts = np.unique(y, return_counts=True)
+
+    # Sort so the (usually much larger) majority class is handled last,
+    # after minority classes have claimed their guaranteed share.
+    order = np.argsort(counts)
+    selected_idx = []
+    remaining = n_samples
+
+    for i, cls in enumerate(classes[order]):
+        cls_idx = np.where(y == cls)[0]
+        is_last_class = (i == len(classes) - 1)
+        if is_last_class:
+            # Majority class: take whatever's left of the budget.
+            take = min(len(cls_idx), remaining)
+        else:
+            take = min(len(cls_idx), max(min_per_class, remaining // n_classes))
+            take = min(take, remaining)
+        chosen = rng.choice(cls_idx, size=take, replace=False)
+        selected_idx.extend(chosen.tolist())
+        remaining -= take
+
+    selected_idx = np.array(selected_idx)
+    rng.shuffle(selected_idx)
+    X_sample, y_sample = X[selected_idx], y[selected_idx]
+
+    if len(np.unique(y_sample)) < 2:
+        raise ValueError(
+            "Sampling produced a subset with only one class present. "
+            "The dataset's minority class is too rare relative to the "
+            "sample size AO8 uses -- try uploading a smaller, pre-balanced "
+            "CSV, or a larger sample of the minority class."
+        )
+
+    return X_sample, y_sample
+
 @celery.task(bind=True, max_retries=2)
 def run_attack_job(self, job_id: str):
     conn = get_db()
@@ -62,9 +128,11 @@ def run_attack_job(self, job_id: str):
         X = df.iloc[:, :-1].values.astype(np.float32)
         y = df.iloc[:, -1].values.astype(int)
 
-        # Cap at 500 samples for speed
+        # Cap at 500 samples for speed -- stratified so imbalanced
+        # datasets (fraud, intrusion, etc.) don't silently end up with
+        # too few (or zero) minority-class examples in the sample.
         if len(X) > 500:
-            X, y = X[:500], y[:500]
+            X, y = stratified_sample(X, y, 500)
 
         # NOTE: we intentionally do NOT re-scale X here. Re-fitting a
         # MinMaxScaler on just this uploaded sample computes a different
@@ -386,8 +454,16 @@ def compute_art_metrics(classifier, X, y, attack_name, epsilon, max_samples=20):
     from art.metrics import empirical_robustness, clever_u, loss_sensitivity
 
     n = min(max_samples, len(X))
-    idx = np.random.choice(len(X), size=n, replace=False)
-    X_sample, y_sample = X[idx], y[idx]
+    try:
+        X_sample, y_sample = stratified_sample(X, y, n)
+    except ValueError as e:
+        # Same single-class problem as the main sampling step, just at a
+        # smaller scale (e.g. only 1 fraud example in the full 500-row job
+        # sample, and this 20-row metrics sub-sample happens to miss it).
+        # These three metrics simply can't be computed without both
+        # classes present -- log and return None rather than crashing.
+        logger.warning(f"Could not sample a 2-class subset for ART metrics ({attack_name}): {e}")
+        return {"loss_sensitivity": None, "clever_score": None, "empirical_robustness_score": None}
 
     metrics = {"loss_sensitivity": None, "clever_score": None, "empirical_robustness_score": None}
 
@@ -548,9 +624,10 @@ def run_hardening_job(self, job_id: str):
         X = df.iloc[:, :-1].values.astype(np.float32)
         y = df.iloc[:, -1].values.astype(int)
 
-        # Hardening is expensive — cap sample size lower than the standard 500
+        # Hardening is expensive -- cap sample size lower than the standard
+        # 500, still stratified for the same reason as run_attack_job.
         if len(X) > 300:
-            X, y = X[:300], y[:300]
+            X, y = stratified_sample(X, y, 300)
 
         # Same rationale as run_attack_job: do NOT re-scale uploaded data.
         X = X.astype(np.float32)

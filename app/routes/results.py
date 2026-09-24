@@ -34,7 +34,7 @@ def api_history():
             j.id, j.status, j.queued_at, j.completed_at,
             j.attack_config, j.error_message,
             j.certified_radius, j.certified_accuracy, j.certification_method,
-            m.name as model_name,
+            m.name as model_name, m.framework as model_framework,
             d.name as dataset_name
         FROM evaluation_jobs j
         LEFT JOIN ml_models m ON j.model_id = m.id
@@ -57,8 +57,10 @@ def api_job_detail(job_id):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT * FROM evaluation_jobs
-        WHERE id = %s AND user_id = %s
+        SELECT j.*, m.framework as model_framework
+        FROM evaluation_jobs j
+        LEFT JOIN ml_models m ON j.model_id = m.id
+        WHERE j.id = %s AND j.user_id = %s
     """, (job_id, user_id))
     job = cur.fetchone()
     if not job:
@@ -440,7 +442,7 @@ def download_pdf(job_id):
     y -= 0.18 * inch
     c.setFont("Helvetica-Oblique", 7.5)
     c.setFillColorRGB(0.35, 0.35, 0.35)
-    c.drawString(margin, y, "Every metric below is flagged against these fixed thresholds.")
+    c.drawString(margin, y, "Every metric below is flagged against these fixed thresholds, the same way a lab panel flags abnormal values.")
     c.setFillColorRGB(0, 0, 0)
     y -= 0.22 * inch
 
@@ -625,6 +627,7 @@ def download_pdf(job_id):
     y -= 0.15 * inch
     c.setFont("Helvetica-Oblique", 7.5)
     c.setFillColorRGB(0.4, 0.4, 0.4)
+    c.drawString(margin, y, f"Showing up to 30 of the smallest perturbations that changed a prediction, across all attacks.")
     c.setFillColorRGB(0, 0, 0)
     y -= 0.24 * inch
 
