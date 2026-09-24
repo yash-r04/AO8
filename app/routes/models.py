@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify, session
 from app.db import get_db
 from app.config import Config
 from app.services.auth_helpers import login_required
+from app.services.upload_validation import validate_model, validate_dataset
 
 models_bp = Blueprint("models", __name__)
 
@@ -25,7 +26,6 @@ def upload_model():
     if not file or not framework:
         return jsonify({"error": "file and framework required"}), 400
 
-    # In upload_model:
     if framework not in ("torchscript", "onnx", "sklearn"):
         return jsonify({"error": "framework must be torchscript, onnx, or sklearn"}), 400
 
@@ -35,11 +35,13 @@ def upload_model():
 
     file_bytes = file.read()
 
-    # Validate model loads correctly
-    try:
-        validate_model(file_bytes, framework)
-    except Exception as e:
-        return jsonify({"error": f"Invalid model file: {str(e)}"}), 400
+    # Full validation: loads the model, runs it on dummy batches of
+    # several different sizes, checks output shape is [batch, n_classes].
+    # Catches the shape/export bugs from this project's history in
+    # seconds, before anything touches S3 or a Celery job.
+    result = validate_model(file_bytes, framework)
+    if not result.ok:
+        return jsonify({"error": result.message}), 400
 
     # Upload to S3
     try:
@@ -64,12 +66,16 @@ def upload_model():
     cur.close()
     conn.close()
 
-    return jsonify({
+    response = {
         "status": "ready",
         "model_id": model_id,
         "filename": file.filename,
         "size_bytes": len(file_bytes),
-    })
+    }
+    if result.info:
+        response["inferred_input_features"] = result.info.get("inferred_input_features")
+
+    return jsonify(response)
 
 
 @models_bp.route("/list", methods=["GET"])
@@ -112,30 +118,14 @@ def delete_model(model_id):
     return jsonify({"status": "deleted"})
 
 
-def validate_model(file_bytes: bytes, framework: str):
-    if framework == "torchscript":
-        import torch
-        buffer = io.BytesIO(file_bytes)
-        torch.jit.load(buffer, map_location="cpu")
-
-    elif framework == "onnx":
-        import onnxruntime as rt
-        rt.InferenceSession(file_bytes)
-
-    elif framework == "sklearn":
-        import pickle
-        pickle.loads(file_bytes)
-
-    else:
-        raise ValueError(f"Unsupported framework: {framework}")
-        
 @models_bp.route("/dataset/upload", methods=["POST"])
 @login_required
 def upload_dataset():
     """
-    Accepts a CSV file.
-    Validates it has at least 2 columns (features + label).
-    Uploads to S3, saves metadata to RDS.
+    Accepts a CSV file. Validates structure, numeric feature columns,
+    integer label column, and per-class sample counts (catches the
+    single-class-subset bug from this project's history) BEFORE
+    saving anything to S3 or the DB.
     """
     file = request.files.get("dataset_file")
     if not file:
@@ -150,16 +140,12 @@ def upload_dataset():
 
     file_bytes = file.read()
 
-    # Validate CSV
-    try:
-        import pandas as pd
-        df = pd.read_csv(io.BytesIO(file_bytes))
-        if len(df.columns) < 2:
-            return jsonify({"error": "CSV must have at least 2 columns"}), 400
-        n_samples = len(df)
-        n_features = len(df.columns) - 1  # last column assumed to be label
-    except Exception as e:
-        return jsonify({"error": f"Invalid CSV: {str(e)}"}), 400
+    result = validate_dataset(file_bytes)
+    if not result.ok:
+        return jsonify({"error": result.message}), 400
+
+    n_samples = result.info["n_samples"]
+    n_features = result.info["n_features"]
 
     # Upload to S3
     try:
@@ -183,13 +169,19 @@ def upload_dataset():
     cur.close()
     conn.close()
 
-    return jsonify({
+    response = {
         "status": "ready",
         "dataset_id": dataset_id,
         "filename": file.filename,
         "n_samples": n_samples,
         "n_features": n_features,
-    })
+    }
+    # Non-fatal warning (e.g. unusual feature scale) still ready to use,
+    # but worth surfacing to the uploader.
+    if result.message:
+        response["warning"] = result.message
+
+    return jsonify(response)
 
 
 @models_bp.route("/dataset/list", methods=["GET"])
