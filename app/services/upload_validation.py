@@ -149,7 +149,7 @@ def _validate_torchscript_model(model_bytes, probe_batch_sizes):
         if err:
             return ValidationResult(False, err)
 
-    return ValidationResult(True, info={"inferred_input_features": input_size})
+    return ValidationResult(True, info={"inferred_input_features": input_size, "input_size_was_guessed": input_size == 30 and _infer_input_size(model) is None})
 
 
 def _validate_onnx_model(model_bytes, probe_batch_sizes):
@@ -167,7 +167,8 @@ def _validate_onnx_model(model_bytes, probe_batch_sizes):
     input_name = input_meta.name
     # Static feature dim if the exporter fixed it, else fall back to a guess.
     shape = input_meta.shape
-    input_size = shape[1] if len(shape) == 2 and isinstance(shape[1], int) else 30
+    has_static_dim = len(shape) == 2 and isinstance(shape[1], int)
+    input_size = shape[1] if has_static_dim else 30
 
     for bs in probe_batch_sizes:
         try:
@@ -186,7 +187,7 @@ def _validate_onnx_model(model_bytes, probe_batch_sizes):
         if err:
             return ValidationResult(False, err)
 
-    return ValidationResult(True, info={"inferred_input_features": input_size})
+    return ValidationResult(True, info={"inferred_input_features": input_size, "input_size_was_guessed": not has_static_dim})
 
 
 def _validate_sklearn_model(model_bytes, probe_batch_sizes):
@@ -197,9 +198,27 @@ def _validate_sklearn_model(model_bytes, probe_batch_sizes):
         return ValidationResult(False, f"Could not unpickle sklearn model: {e}")
 
     if not hasattr(model, "predict"):
-        return ValidationResult(False, "Uploaded .pkl object has no .predict() method -- not a usable classifier.")
+        return ValidationResult(
+            False,
+            f"Uploaded .pkl object has no .predict() method -- not a usable "
+            f"classifier. The file unpickled successfully as a "
+            f"{type(model).__module__}.{type(model).__name__}, but AO8 needs "
+            f"the pickle to contain a single fitted scikit-learn estimator "
+            f"(e.g. KNeighborsClassifier) -- not a dict, a numpy array, a "
+            f"scaler, or a bundled {{\"model\": ..., \"scaler\": ...}} object. "
+            f"Pickle just the fitted model by itself."
+        )
 
-    input_size = getattr(model, "n_features_in_", None) or 30
+    input_size = getattr(model, "n_features_in_", None)
+    if input_size is None:
+        return ValidationResult(
+            False,
+            f"Uploaded {type(model).__module__}.{type(model).__name__} has no "
+            f"n_features_in_ attribute, so AO8 can't determine its expected "
+            f"input size. This usually means the model was not fit with "
+            f"scikit-learn's standard .fit(X, y) interface (or is unfitted). "
+            f"Refit it with scikit-learn directly, then re-pickle."
+        )
 
     for bs in probe_batch_sizes:
         try:
@@ -224,7 +243,7 @@ def _validate_sklearn_model(model_bytes, probe_batch_sizes):
     # NOTE: FGSM/PGD/CW won't work on this model (no gradients) -- that's
     # expected and handled by the automatic HopSkipJump fallback in
     # tasks.py, not an upload-time error.
-    return ValidationResult(True, info={"inferred_input_features": input_size})
+    return ValidationResult(True, info={"inferred_input_features": input_size, "input_size_was_guessed": False})
 
 
 # ======================================================================
@@ -339,9 +358,17 @@ def validate_model_dataset_compatibility(model_info: dict, dataset_info: dict) -
     running the model, which the per-file validators above already do with
     dummy data) but catches the simple, common case of a plain column-count
     mismatch immediately.
+
+    If the model's input size was only a guessed fallback (couldn't be
+    read from the model itself -- see input_size_was_guessed in each
+    validator's info dict), a match against the dataset's feature count is
+    coincidental, not confirmed. Rather than silently pass, this is flagged
+    so a 30-guessed-matches-30-features case can't slip through as if it
+    were verified.
     """
     model_features = model_info.get("inferred_input_features")
     dataset_features = dataset_info.get("n_features")
+    was_guessed = model_info.get("input_size_was_guessed", False)
 
     if model_features is not None and dataset_features is not None:
         if model_features != dataset_features:
@@ -352,6 +379,17 @@ def validate_model_dataset_compatibility(model_info: dict, dataset_info: dict) -
                 f"feature columns (excluding the label column). Check that "
                 f"the CSV's columns match what the model was trained on, in "
                 f"the same order."
+            )
+        if was_guessed:
+            return ValidationResult(
+                True,
+                message=(
+                    f"Note: the model's expected input size could not be read "
+                    f"directly from the model and was assumed to match the "
+                    f"dataset's {dataset_features} features. This match is "
+                    f"unconfirmed -- if results look wrong, verify the model's "
+                    f"actual expected input size."
+                ),
             )
 
     return ValidationResult(True)
